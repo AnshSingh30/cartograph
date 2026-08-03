@@ -36,7 +36,29 @@ async function main() {
   assert.ok(cluster, "shared.js should belong to a cluster");
 
   fs.rmSync(dir, { recursive: true, force: true });
+
+  await tsEsmExtensionRewrite();
   console.log("OK: graph.test.ts passed");
+}
+
+/**
+ * TypeScript ESM requires importing "./x.js" when the file on disk is "./x.ts".
+ * Getting this wrong yields an edgeless graph and uniform centrality — a silent
+ * failure that still reports a successful scan.
+ */
+async function tsEsmExtensionRewrite() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cartograph-tsesm-"));
+  fs.mkdirSync(path.join(dir, "sub"));
+  fs.writeFileSync(path.join(dir, "entry.ts"), `import { a } from "./sub/dep.js";\nimport { b } from "./sub/index.js";\n`);
+  fs.writeFileSync(path.join(dir, "sub", "dep.ts"), `export const a = 1;`);
+  fs.writeFileSync(path.join(dir, "sub", "index.ts"), `export const b = 2;`);
+
+  const { graph } = await buildImportGraph(dir);
+  assert.ok(graph.hasEdge("entry.ts", "sub/dep.ts"), 'import "./sub/dep.js" must resolve to sub/dep.ts');
+  assert.ok(graph.hasEdge("entry.ts", "sub/index.ts"), 'import "./sub/index.js" must resolve to sub/index.ts');
+  assert.strictEqual(graph.size, 2, "expected exactly 2 edges");
+
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 main().catch((err) => {

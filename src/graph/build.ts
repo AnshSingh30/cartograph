@@ -32,24 +32,28 @@ function walk(dir: string, files: string[] = []): string[] {
   return files;
 }
 
+const EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+
 /** Resolves a relative import specifier to a repo-relative path already present in the repo, or null (external/unresolved). */
 function resolveImport(fromFile: string, specifier: string, fileSet: Set<string>): string | null {
   if (!specifier.startsWith(".")) return null;
   const joined = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), specifier));
-  const candidates = [
-    joined,
-    `${joined}.ts`,
-    `${joined}.tsx`,
-    `${joined}.js`,
-    `${joined}.jsx`,
-    `${joined}.mjs`,
-    `${joined}.cjs`,
-    `${joined}/index.ts`,
-    `${joined}/index.tsx`,
-    `${joined}/index.js`,
-    `${joined}/index.jsx`,
-  ];
-  return candidates.find((c) => fileSet.has(c)) ?? null;
+
+  // TypeScript ESM makes you write "./x.js" even though the file on disk is "./x.ts",
+  // so a literal match must be tried first, then the same path with the extension dropped.
+  const stripped = joined.replace(/\.(js|jsx|mjs|cjs)$/, "");
+  const bases = stripped === joined ? [joined] : [joined, stripped];
+
+  for (const base of bases) {
+    if (fileSet.has(base)) return base;
+    for (const ext of EXTENSIONS) {
+      if (fileSet.has(`${base}${ext}`)) return `${base}${ext}`;
+    }
+    for (const ext of EXTENSIONS) {
+      if (fileSet.has(`${base}/index${ext}`)) return `${base}/index${ext}`;
+    }
+  }
+  return null;
 }
 
 export interface BuiltGraph {
