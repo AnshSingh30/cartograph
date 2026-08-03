@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartograph</title>
+<style>
+  :root {
+    --ground: #0A2440;
+    --panel: #153B57;
+    --ink: #EAF1F6;
+    --brass: #D6A85A;
+    --flag: #C64B3C;
+    --trace: #6FE3C4;
+    --rule: rgba(234,241,246,0.34);
+    --rule-soft: rgba(234,241,246,0.12);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Drafting label: the design's stencil role, rendered with the system face. */
+  .stencil { font-family: var(--sans); font-weight: 600; text-transform: uppercase; }
+  .data { font-family: var(--mono); }
+
+  #map { position: fixed; inset: 0; width: 100%; height: 100%; cursor: grab; display: block; }
+  #map.panning { cursor: grabbing; }
+  #map text { pointer-events: none; user-select: none; }
+
+  .node { cursor: pointer; }
+  .node circle { fill: var(--ground); stroke: var(--ink); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+  .node.hub circle { fill: rgba(214,168,90,0.22); stroke: var(--brass); stroke-width: 1.75; }
+  .node:hover circle { stroke: var(--brass); stroke-width: 2.25; }
+  .node.selected circle { fill: rgba(214,168,90,0.28); stroke: var(--brass); stroke-width: 2.5; }
+  .node.related circle { stroke: var(--brass); }
+  .node.dimmed { opacity: 0.22; }
+
+  .label { font-family: var(--mono); font-size: 10px; fill: var(--ink); fill-opacity: 0.72; }
+  .label.hub { fill-opacity: 0.95; }
+  .cluster-label {
+    font-family: var(--sans); font-weight: 600; text-transform: uppercase;
+    font-size: 11px; letter-spacing: 3px; fill: var(--brass); fill-opacity: 0.62;
+  }
+  .focus-ring { fill: none; stroke: var(--brass); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+
+  /* ── Panels ───────────────────────────────────────────── */
+  .panel {
+    position: fixed; background: var(--panel);
+    border: 1px solid var(--rule);
+    box-shadow: 0 18px 48px rgba(6,22,38,0.45);
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 11px; height: 11px; pointer-events: none;
+  }
+  .panel::before { top: 6px; left: 6px; border-top: 1px solid var(--brass); border-left: 1px solid var(--brass); }
+  .panel::after { bottom: 6px; right: 6px; border-bottom: 1px solid var(--brass); border-right: 1px solid var(--brass); }
+
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--rule);
+  }
+  .panel-head .title { font-size: 11px; letter-spacing: 4px; }
+  .panel-head .meta { font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; opacity: 0.5; }
+
+  .section-label { font-size: 9.5px; letter-spacing: 2.6px; opacity: 0.5; }
+
+  .stat-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: rgba(234,241,246,0.2);
+    border-top: 1px solid rgba(234,241,246,0.2);
+    border-bottom: 1px solid rgba(234,241,246,0.2);
+  }
+  .stat { background: var(--panel); padding: 10px 16px; }
+  .stat .v { font-family: var(--mono); font-size: 12.5px; margin-top: 5px; }
+
+  /* ── Legend ───────────────────────────────────────────── */
+  #legend { top: 32px; left: 32px; width: 268px; }
+  .legend-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; }
+  .legend-row { display: flex; align-items: center; gap: 11px; font-size: 12.5px; opacity: 0.82; }
+  .legend-row svg { flex: none; }
+
+  .toggles { border-top: 1px solid var(--rule); }
+  .toggle {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 9px 16px; background: none; border: 0; border-bottom: 1px solid var(--rule-soft);
+    color: var(--ink); font-family: var(--sans); font-size: 12.5px; text-align: left; cursor: pointer;
+  }
+  .toggle:last-child { border-bottom: 0; }
+  .toggle:disabled { cursor: not-allowed; opacity: 0.38; }
+  .toggle .box { width: 15px; height: 15px; border: 1px solid var(--rule); flex: none; position: relative; }
+  .toggle.on .box { border-color: var(--brass); }
+  .toggle.on .box::after {
+    content: ""; position: absolute; inset: 3px; background: var(--brass);
+  }
+  .toggle .note { margin-left: auto; font-family: var(--mono); font-size: 10px; letter-spacing: 1.2px; opacity: 0.55; }
+  .toggle:focus-visible { outline: 1px solid var(--brass); outline-offset: -2px; }
+
+  .seg { display: flex; border-top: 1px solid var(--rule); }
+  .seg button {
+    flex: 1; padding: 8px 0; background: none; border: 0; border-right: 1px solid var(--rule-soft);
+    color: var(--ink); font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.3px;
+    text-transform: uppercase; cursor: pointer; opacity: 0.5;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { color: var(--brass); opacity: 1; }
+  .seg button:focus-visible { outline: 1px solid var(--brass); outline-offset: -2px; }
+
+  /* ── Inspector ────────────────────────────────────────── */
+  #inspector { top: 32px; right: 32px; width: 384px; max-height: calc(100vh - 64px); display: none; flex-direction: column; }
+  #inspector.open { display: flex; }
+  .insp-scroll { overflow-y: auto; }
+  .insp-body { padding: 16px; }
+  .insp-path { font-family: var(--mono); font-size: 15px; color: var(--brass); word-break: break-all; }
+  .insp-desc { font-size: 13.5px; line-height: 1.55; opacity: 0.8; margin-top: 10px; }
+  .insp-desc.absent { opacity: 0.45; font-style: italic; }
+
+  .list { display: flex; flex-direction: column; padding: 0 16px 14px; }
+  .list-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    padding: 7px 0; border-bottom: 1px solid var(--rule-soft);
+    background: none; border-left: 0; border-right: 0; border-top: 0;
+    color: var(--ink); text-align: left; cursor: pointer; width: 100%;
+  }
+  .list-row:hover .p { color: var(--brass); }
+  .list-row:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+  .list-row .p { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .list-row .c { font-family: var(--mono); font-size: 10px; letter-spacing: 1.2px; opacity: 0.45; flex: none; text-transform: uppercase; }
+  .more {
+    background: none; border: 0; padding: 8px 0 0; cursor: pointer;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.2px; color: var(--brass); text-align: left;
+  }
+  .empty-note { font-size: 12px; opacity: 0.45; padding: 7px 0; }
+
+  /* ── Title block & stats ──────────────────────────────── */
+  #titleblock { bottom: 32px; right: 32px; width: 384px; }
+  .tb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(234,241,246,0.2); }
+  .tb-cell { background: var(--panel); padding: 9px 16px; }
+  .tb-cell .k { font-size: 9.5px; letter-spacing: 2.6px; opacity: 0.5; }
+  .tb-cell .v { font-family: var(--mono); font-size: 12px; margin-top: 4px; word-break: break-all; }
+
+  #stats {
+    position: fixed; bottom: 32px; left: 32px;
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; opacity: 0.55;
+  }
+  #stats .div { width: 1px; height: 11px; background: rgba(234,241,246,0.4); }
+
+  #empty {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    text-align: center; padding: 32px;
+  }
+  #empty.on { display: flex; }
+</style>
+</head>
+<body>
+
+<svg id="map" role="img" aria-label="Repository structure map"></svg>
+
+<div class="panel" id="legend">
+  <div class="panel-head">
+    <div class="title stencil">Legend</div>
+    <div class="meta" id="zoom-readout">100%</div>
+  </div>
+  <div class="legend-body">
+    <div class="legend-row">
+      <svg width="34" height="18"><circle cx="9" cy="9" r="3.5" fill="none" stroke="#EAF1F6" stroke-width="1.25"/><circle cx="25" cy="9" r="7.5" fill="rgba(214,168,90,0.22)" stroke="#D6A85A" stroke-width="1.75"/></svg>
+      <span>Size = how much depends on it</span>
+    </div>
+    <div class="legend-row">
+      <svg width="34" height="18"><line x1="2" y1="9" x2="32" y2="9" stroke="#EAF1F6" stroke-opacity="0.5" stroke-width="1.25"/></svg>
+      <span>Line = one file imports another</span>
+    </div>
+    <div class="legend-row">
+      <svg width="34" height="18"><rect x="2" y="3" width="30" height="12" fill="none" stroke="#D6A85A" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="3 3"/></svg>
+      <span>Group = subsystem</span>
+    </div>
+  </div>
+  <div class="toggles">
+    <button class="toggle on" id="t-structure" aria-pressed="true">
+      <span class="box"></span><span>Structure</span><span class="note" id="t-structure-note"></span>
+    </button>
+    <button class="toggle" disabled title="Layer 2 is not built yet">
+      <span class="box"></span><span>Trust</span><span class="note">Not built</span>
+    </button>
+    <button class="toggle" disabled title="Layer 3 is not built yet">
+      <span class="box"></span><span>Replay</span><span class="note">Not built</span>
+    </button>
+  </div>
+  <div class="seg" role="group" aria-label="Label density">
+    <button data-labels="hubs" class="on">Hubs</button>
+    <button data-labels="all">All</button>
+    <button data-labels="none">None</button>
+  </div>
+</div>
+
+<div class="panel" id="inspector" role="dialog" aria-label="File details">
+  <div class="panel-head">
+    <div class="title stencil">File</div>
+    <div class="meta">Esc to close</div>
+  </div>
+  <div class="insp-scroll">
+    <div class="insp-body">
+      <div class="insp-path" id="i-path"></div>
+      <div class="insp-desc" id="i-desc"></div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="section-label stencil">Referenced by</div><div class="v" id="i-in"></div></div>
+      <div class="stat"><div class="section-label stencil">Imports</div><div class="v" id="i-out"></div></div>
+      <div class="stat"><div class="section-label stencil">Subsystem</div><div class="v" id="i-cluster"></div></div>
+      <div class="stat"><div class="section-label stencil">Rank</div><div class="v" id="i-rank"></div></div>
+    </div>
+    <div style="padding:14px 16px 6px"><div class="section-label stencil">Imported by</div></div>
+    <div class="list" id="i-inlist"></div>
+    <div style="padding:4px 16px 6px;border-top:1px solid var(--rule)"><div class="section-label stencil">Imports</div></div>
+    <div class="list" id="i-outlist"></div>
+  </div>
+</div>
+
+<div class="panel" id="titleblock">
+  <div class="panel-head">
+    <div class="title stencil">Cartograph</div>
+    <div class="meta" id="tb-status">Drawing…</div>
+  </div>
+  <div class="tb-grid">
+    <div class="tb-cell"><div class="k stencil">Repo</div><div class="v" id="tb-repo"></div></div>
+    <div class="tb-cell"><div class="k stencil">View</div><div class="v">Structure</div></div>
+    <div class="tb-cell"><div class="k stencil">Language</div><div class="v" id="tb-lang"></div></div>
+    <div class="tb-cell"><div class="k stencil">Generated</div><div class="v" id="tb-gen"></div></div>
+  </div>
+</div>
+
+<div id="stats">
+  <div id="s-files"></div><div class="div"></div>
+  <div id="s-clusters"></div><div class="div"></div>
+  <div id="s-edges"></div>
+</div>
+
+<div id="empty">
+  <div>
+    <div class="stencil" style="font-size:13px;letter-spacing:4px;color:var(--brass)">Nothing to draw</div>
+    <div style="font-size:13.5px;opacity:0.7;margin-top:10px;max-width:420px">
+      This scan found no files with import edges. Check that the path points at a JavaScript or TypeScript project.
+    </div>
+  </div>
+</div>
+
+<script id="data" type="application/json">__CARTOGRAPH_DATA__</script>
+<script>
+(() => {
+  "use strict";
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const el = (id) => document.getElementById(id);
+
+  // ── Index ────────────────────────────────────────────────
+  const nodes = D.nodes.map((n) => ({ ...n }));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const outAdj = new Map(), inAdj = new Map();
+  for (const n of nodes) { outAdj.set(n.id, []); inAdj.set(n.id, []); }
+  const edges = D.edges.filter((e) => byId.has(e.from) && byId.has(e.to));
+  for (const e of edges) { outAdj.get(e.from).push(e.to); inAdj.get(e.to).push(e.from); }
+
+  const clusterName = new Map(
+    (D.clusters || []).map((c) => [c.id, c.label || `Cluster ${c.id}`])
+  );
+
+  el("tb-repo").textContent = D.repo || "—";
+  el("tb-lang").textContent = D.language || "—";
+  el("tb-gen").textContent = (D.generated_at || "").slice(0, 10) || "—";
+  el("s-files").textContent = `${nodes.length} files`.toUpperCase();
+  el("s-clusters").textContent = `${(D.clusters || []).length} subsystems`.toUpperCase();
+  el("s-edges").textContent = `${edges.length} imports`.toUpperCase();
+  el("t-structure-note").textContent = `${nodes.length}`;
+
+  if (!nodes.length) {
+    el("empty").classList.add("on");
+    el("tb-status").textContent = "Empty";
+    return;
+  }
+
+  // Rank by centrality: the inspector reports "N of M".
+  const ranked = [...nodes].sort((a, b) => b.centrality - a.centrality);
+  const rankOf = new Map(ranked.map((n, i) => [n.id, i + 1]));
+  const maxC = ranked[0].centrality || 1;
+  // Hubs get brass treatment and keep their labels in "hubs" mode.
+  const HUB_COUNT = Math.min(12, Math.max(3, Math.round(nodes.length * 0.04)));
+  const hubs = new Set(ranked.slice(0, HUB_COUNT).map((n) => n.id));
+  for (const n of nodes) n.r = 4 + 20 * Math.sqrt(n.centrality / maxC);
+
+  // Files with no imports either way carry no structural information, and letting the
+  // simulation scatter them across the sheet crowds out the part of the map that does.
+  // They get parked in a labelled margin block instead of being dropped.
+  const placed = nodes.filter((n) => outAdj.get(n.id).length + inAdj.get(n.id).length > 0);
+  const loose = nodes.filter((n) => outAdj.get(n.id).length + inAdj.get(n.id).length === 0);
+
+  // ── Layout: Fruchterman-Reingold, seeded by cluster ──────
+  // Seeding by cluster gives the design's separated, labelled regions and
+  // converges far faster than a random start.
+  const clusterIds = [...new Set(placed.map((n) => n.cluster))];
+  const N = Math.max(placed.length, 1);
+  const SIZE = 400 + 60 * Math.sqrt(N);
+  const k = Math.sqrt((SIZE * SIZE) / N);
+  const seedR = SIZE * 0.36;
+  const seeds = new Map(
+    clusterIds.map((c, i) => {
+      const a = (i / clusterIds.length) * Math.PI * 2;
+      return [c, { x: Math.cos(a) * seedR, y: Math.sin(a) * seedR }];
+    })
+  );
+  for (const n of placed) {
+    const s = seeds.get(n.cluster);
+    n.x = s.x + (Math.random() - 0.5) * k;
+    n.y = s.y + (Math.random() - 0.5) * k;
+  }
+  for (const n of loose) { n.x = 0; n.y = 0; }
+
+  /** Parks unconnected files in a tidy grid below the drawing, once the graph has settled. */
+  function placeLoose() {
+    if (!loose.length) return;
+    let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of placed) {
+      minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y);
+    }
+    if (!placed.length) { minX = 0; maxX = 0; maxY = 0; }
+    const gap = 30;
+    const cols = Math.max(1, Math.min(loose.length, Math.round((maxX - minX) / gap) || 12));
+    const cx = (minX + maxX) / 2;
+    const startX = cx - ((Math.min(cols, loose.length) - 1) * gap) / 2;
+    loose.forEach((n, i) => {
+      n.x = startX + (i % cols) * gap;
+      n.y = maxY + 110 + Math.floor(i / cols) * gap;
+    });
+    looseTop = maxY + 74;
+    looseCx = cx;
+  }
+  let looseTop = 0, looseCx = 0;
+
+  const ITERATIONS = 320;
+  // Beyond this, two nodes stop pushing each other. Without a cutoff the repulsion from
+  // 300+ nodes overwhelms any centering force and files with no imports drift off the sheet.
+  const CUTOFF2 = (4 * k) * (4 * k);
+  const BOUND = SIZE;
+  let iter = 0;
+
+  function step(temp) {
+    for (const n of placed) { n.dx = 0; n.dy = 0; }
+    // Repulsion. ponytail: O(n²) — a Barnes-Hut quadtree only pays off past ~2k files.
+    for (let i = 0; i < placed.length; i++) {
+      const a = placed[i];
+      for (let j = i + 1; j < placed.length; j++) {
+        const b = placed[j];
+        let dx = a.x - b.x, dy = a.y - b.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 > CUTOFF2) continue;
+        if (d2 < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 0.01; }
+        const f = (k * k) / d2;
+        a.dx += dx * f; a.dy += dy * f;
+        b.dx -= dx * f; b.dy -= dy * f;
+      }
+    }
+    // Attraction along imports.
+    for (const e of edges) {
+      const a = byId.get(e.from), b = byId.get(e.to);
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d = Math.hypot(dx, dy) || 0.01;
+      const f = d / k;
+      a.dx -= dx * f; a.dy -= dy * f;
+      b.dx += dx * f; b.dy += dy * f;
+    }
+    // Cluster cohesion, so subsystems stay legible as regions.
+    const cen = new Map();
+    for (const n of placed) {
+      const c = cen.get(n.cluster) || { x: 0, y: 0, n: 0 };
+      c.x += n.x; c.y += n.y; c.n++;
+      cen.set(n.cluster, c);
+    }
+    for (const c of cen.values()) { c.x /= c.n; c.y /= c.n; }
+    for (const n of placed) {
+      const c = cen.get(n.cluster);
+      n.dx += (c.x - n.x) * 0.09;
+      n.dy += (c.y - n.y) * 0.09;
+      n.dx -= n.x * 0.03;   // keeps the drawing centred on the sheet
+      n.dy -= n.y * 0.03;
+    }
+    for (const n of placed) {
+      const d = Math.hypot(n.dx, n.dy) || 1;
+      n.x += (n.dx / d) * Math.min(d, temp);
+      n.y += (n.dy / d) * Math.min(d, temp);
+      // Hard bound: whatever the force balance does, the drawing stays on the sheet.
+      const r = Math.hypot(n.x, n.y);
+      if (r > BOUND) { n.x = (n.x / r) * BOUND; n.y = (n.y / r) * BOUND; }
+    }
+    return cen;
+  }
+
+  // ── SVG scaffold ─────────────────────────────────────────
+  const svg = el("map");
+  svg.innerHTML = `<defs>
+    <pattern id="g-min" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 L0 0 0 48" fill="none" stroke="#EAF1F6" stroke-opacity="0.055" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    </pattern>
+    <pattern id="g-maj" width="240" height="240" patternUnits="userSpaceOnUse">
+      <rect width="240" height="240" fill="url(#g-min)"/>
+      <path d="M240 0 L0 0 0 240" fill="none" stroke="#EAF1F6" stroke-opacity="0.1" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    </pattern>
+  </defs>
+  <rect x="-40000" y="-40000" width="80000" height="80000" fill="url(#g-maj)"/>
+  <g id="viewport">
+    <path id="edges-base" fill="none" stroke="#EAF1F6" stroke-opacity="0.17" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <path id="edges-hi" fill="none" stroke="#D6A85A" stroke-opacity="0.85" stroke-width="1.4" vector-effect="non-scaling-stroke"/>
+    <g id="clusters"></g>
+    <g id="nodes"></g>
+    <g id="labels"></g>
+  </g>`;
+  const gViewport = el("viewport"), gNodes = el("nodes"), gLabels = el("labels"), gClusters = el("clusters");
+  const pBase = el("edges-base"), pHi = el("edges-hi");
+
+  // One <g> per node — 300-odd elements is fine; edges batch into two paths.
+  const nodeEls = new Map();
+  for (const n of nodes) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "node" + (hubs.has(n.id) ? " hub" : ""));
+    g.dataset.id = n.id;
+    const c = document.createElementNS(SVGNS, "circle");
+    c.setAttribute("r", n.r);
+    g.appendChild(c);
+    const t = document.createElementNS(SVGNS, "title");
+    t.textContent = n.id;
+    g.appendChild(t);
+    gNodes.appendChild(g);
+    nodeEls.set(n.id, g);
+  }
+
+  let labelMode = "hubs";
+  let selected = null;
+
+  // Basenames repeat constantly in monorepos — every package has an index.ts — so a
+  // basename-only label is unreadable. Add parent directories until the name is unique.
+  const shortName = new Map();
+  {
+    const parts = new Map(nodes.map((n) => [n.id, n.id.split("/")]));
+    for (const n of nodes) {
+      let name = parts.get(n.id).slice(-1).join("/");
+      for (let d = 2; d <= 4; d++) {
+        if (!nodes.some((o) => o.id !== n.id && o.id.endsWith("/" + name))) break;
+        name = parts.get(n.id).slice(-d).join("/");
+      }
+      shortName.set(n.id, name);
+    }
+  }
+
+  function edgePath(filter) {
+    let d = "";
+    for (const e of edges) {
+      if (filter && !filter(e)) continue;
+      const a = byId.get(e.from), b = byId.get(e.to);
+      d += `M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+    }
+    return d;
+  }
+
+  function drawLabels(centroids) {
+    gLabels.textContent = "";
+    gClusters.textContent = "";
+    // Subsystem names sit at the centroid; tiny clusters would only add noise.
+    if (loose.length) {
+      const t = document.createElementNS(SVGNS, "text");
+      t.setAttribute("class", "cluster-label");
+      t.setAttribute("x", looseCx);
+      t.setAttribute("y", looseTop);
+      t.setAttribute("text-anchor", "middle");
+      t.textContent = `No imports either way — ${loose.length} file${loose.length === 1 ? "" : "s"}`;
+      gClusters.appendChild(t);
+    }
+    for (const [cid, c] of centroids) {
+      const members = placed.filter((n) => n.cluster === cid).length;
+      if (members < 3) continue;
+      const t = document.createElementNS(SVGNS, "text");
+      t.setAttribute("class", "cluster-label");
+      t.setAttribute("x", c.x);
+      t.setAttribute("y", c.y);
+      t.setAttribute("text-anchor", "middle");
+      t.textContent = clusterName.get(cid) || `Cluster ${cid}`;
+      gClusters.appendChild(t);
+    }
+    if (labelMode === "none") return;
+    const show = labelMode === "all" ? nodes : nodes.filter((n) => hubs.has(n.id));
+    for (const n of show) {
+      const t = document.createElementNS(SVGNS, "text");
+      t.setAttribute("class", "label" + (hubs.has(n.id) ? " hub" : ""));
+      t.setAttribute("x", n.x + n.r + 5);
+      t.setAttribute("y", n.y + 3.5);
+      t.textContent = shortName.get(n.id);
+      gLabels.appendChild(t);
+    }
+  }
+
+  let lastCentroids = new Map();
+  function paint() {
+    for (const n of nodes) nodeEls.get(n.id).setAttribute("transform", `translate(${n.x.toFixed(1)},${n.y.toFixed(1)})`);
+    pBase.setAttribute("d", edgePath(selected ? (e) => e.from !== selected && e.to !== selected : null));
+    pHi.setAttribute("d", selected ? edgePath((e) => e.from === selected || e.to === selected) : "");
+    drawLabels(lastCentroids);
+  }
+
+  // ── View transform ───────────────────────────────────────
+  let view = { x: -SIZE, y: -SIZE, w: SIZE * 2, h: SIZE * 2 };
+  // Keep the drawing framed while it settles; the first pan or zoom hands control over.
+  let autoFit = true;
+  function applyView() {
+    svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+    el("zoom-readout").textContent = Math.round((svg.clientWidth / view.w) * 100) + "%";
+  }
+  function fit() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x - n.r); maxX = Math.max(maxX, n.x + n.r);
+      minY = Math.min(minY, n.y - n.r); maxY = Math.max(maxY, n.y + n.r);
+    }
+    const pad = 90;
+    const w = Math.max(maxX - minX + pad * 2, 200);
+    const h = Math.max(maxY - minY + pad * 2, 200);
+    // Match the viewport aspect so nothing is cropped.
+    const ar = svg.clientWidth / svg.clientHeight;
+    let vw = w, vh = h;
+    if (w / h > ar) vh = w / ar; else vw = h * ar;
+    view = { x: (minX + maxX) / 2 - vw / 2, y: (minY + maxY) / 2 - vh / 2, w: vw, h: vh };
+    applyView();
+  }
+
+  svg.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    autoFit = false;
+    const r = svg.getBoundingClientRect();
+    const mx = view.x + ((ev.clientX - r.left) / r.width) * view.w;
+    const my = view.y + ((ev.clientY - r.top) / r.height) * view.h;
+    const f = ev.deltaY > 0 ? 1.12 : 1 / 1.12;
+    view.x = mx - (mx - view.x) * f;
+    view.y = my - (my - view.y) * f;
+    view.w *= f; view.h *= f;
+    applyView();
+  }, { passive: false });
+
+  let drag = null;
+  svg.addEventListener("pointerdown", (ev) => {
+    autoFit = false;
+    drag = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y, moved: false };
+    svg.setPointerCapture(ev.pointerId);
+    svg.classList.add("panning");
+  });
+  svg.addEventListener("pointermove", (ev) => {
+    if (!drag) return;
+    const r = svg.getBoundingClientRect();
+    const dx = (ev.clientX - drag.x) * (view.w / r.width);
+    const dy = (ev.clientY - drag.y) * (view.h / r.height);
+    if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) > 3) drag.moved = true;
+    view.x = drag.vx - dx; view.y = drag.vy - dy;
+    applyView();
+  });
+  svg.addEventListener("pointerup", (ev) => {
+    // A drag that moved is a pan, not a click — don't let it clear the selection.
+    const wasDrag = drag && drag.moved;
+    drag = null;
+    svg.classList.remove("panning");
+    svg.releasePointerCapture(ev.pointerId);
+    if (wasDrag) return;
+    const hit = ev.target.closest(".node");
+    select(hit ? hit.dataset.id : null);
+  });
+
+  // ── Selection & inspector ────────────────────────────────
+  function row(id) {
+    const b = document.createElement("button");
+    b.className = "list-row";
+    b.innerHTML = `<span class="p"></span><span class="c"></span>`;
+    b.querySelector(".p").textContent = id;
+    const n = byId.get(id);
+    b.querySelector(".c").textContent = n ? (clusterName.get(n.cluster) || "") : "";
+    b.addEventListener("click", () => select(id));
+    return b;
+  }
+
+  function fillList(container, ids) {
+    container.textContent = "";
+    if (!ids.length) {
+      const d = document.createElement("div");
+      d.className = "empty-note";
+      d.textContent = "None";
+      container.appendChild(d);
+      return;
+    }
+    const CAP = 5;
+    const render = (limit) => {
+      container.textContent = "";
+      for (const id of ids.slice(0, limit)) container.appendChild(row(id));
+      if (ids.length > limit) {
+        const more = document.createElement("button");
+        more.className = "more";
+        more.textContent = `Show all ${ids.length}`;
+        more.addEventListener("click", () => render(ids.length));
+        container.appendChild(more);
+      }
+    };
+    render(CAP);
+  }
+
+  function select(id) {
+    selected = id && byId.has(id) ? id : null;
+    const insp = el("inspector");
+    // Reflect selection in the URL so a specific file's view can be linked or bookmarked.
+    history.replaceState(null, "", selected ? "#" + encodeURIComponent(selected) : location.pathname);
+
+    for (const [nid, g] of nodeEls) {
+      g.classList.toggle("selected", nid === selected);
+      const rel = selected && (outAdj.get(selected).includes(nid) || inAdj.get(selected).includes(nid));
+      g.classList.toggle("related", !!rel);
+      g.classList.toggle("dimmed", !!selected && nid !== selected && !rel);
+    }
+
+    if (!selected) { insp.classList.remove("open"); paint(); return; }
+
+    const n = byId.get(selected);
+    el("i-path").textContent = n.id;
+    const desc = el("i-desc");
+    if (n.description) {
+      desc.textContent = n.description;
+      desc.classList.remove("absent");
+    } else {
+      desc.textContent = "No description. Re-scan with --describe to generate one.";
+      desc.classList.add("absent");
+    }
+    const ins = inAdj.get(n.id), outs = outAdj.get(n.id);
+    el("i-in").textContent = `${ins.length} file${ins.length === 1 ? "" : "s"}`;
+    el("i-out").textContent = `${outs.length} file${outs.length === 1 ? "" : "s"}`;
+    el("i-cluster").textContent = clusterName.get(n.cluster) || `Cluster ${n.cluster}`;
+    el("i-rank").textContent = `${rankOf.get(n.id)} of ${nodes.length}`;
+    fillList(el("i-inlist"), ins);
+    fillList(el("i-outlist"), outs);
+    insp.classList.add("open");
+    paint();
+  }
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") select(null);
+    if (ev.key === "f" && !ev.metaKey && !ev.ctrlKey) fit();
+  });
+
+  for (const b of document.querySelectorAll("[data-labels]")) {
+    b.addEventListener("click", () => {
+      labelMode = b.dataset.labels;
+      for (const o of document.querySelectorAll("[data-labels]")) o.classList.toggle("on", o === b);
+      drawLabels(lastCentroids);
+    });
+  }
+
+  // ── Settle, then hand over ───────────────────────────────
+  applyView();
+  const T0 = performance.now();
+  function frame() {
+    // Paced by elapsed time rather than frame count, so the map still resolves on schedule
+    // in a throttled or backgrounded tab instead of stalling half-drawn.
+    const target = Math.min(ITERATIONS, Math.ceil(((performance.now() - T0) / 1200) * ITERATIONS) + 4);
+    while (iter < target) {
+      lastCentroids = step(k * 0.5 * (1 - iter / ITERATIONS) + 0.5);
+      iter++;
+    }
+    placeLoose();
+    paint();
+    if (autoFit) fit();
+    if (iter < ITERATIONS) {
+      requestAnimationFrame(frame);
+    } else {
+      autoFit = false;
+      el("tb-status").textContent = "Settled";
+      if (location.hash.length > 1) select(decodeURIComponent(location.hash.slice(1)));
+    }
+  }
+  requestAnimationFrame(frame);
+  window.addEventListener("resize", applyView);
+})();
+</script>
+</body>
+</html>

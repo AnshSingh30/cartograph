@@ -6,7 +6,7 @@ Aider computes a repo map with PageRank. Claude Code explores live with grep and
 
 Cartograph produces that artifact: `cartograph.json` for machines and `AGENTS.md` for humans and agents alike.
 
-> **Status: v0.1, in progress.** The structure layer works and is validated on real repos. The visual map and CI integration are not built yet — see [Current limitations](#current-limitations). This README describes only what runs today.
+> **Status: v0.1, in progress.** The structure layer and its visual map work and are validated on real repos. CI integration is not built yet — see [Current limitations](#current-limitations). This README describes only what runs today.
 
 ---
 
@@ -18,9 +18,21 @@ cd cartograph
 npm install
 
 npx tsx src/cli.ts scan /path/to/your/repo --out ./cartograph-output
+npx tsx src/cli.ts serve ./cartograph-output
 ```
 
 That runs **fully offline**. No API key, no network, no account.
+
+### The map
+
+`serve` opens an interactive drawing of the scan on `localhost` — node size is how much depends on a file, lines are imports, and files are grouped into the subsystems Louvain found. Click any file for its description, who imports it, what it imports, and its rank.
+
+```bash
+npx tsx src/cli.ts serve ./cartograph-output --port 4173   # default port
+npx tsx src/cli.ts serve ./cartograph-output --no-open      # don't launch a browser
+```
+
+The page is a single self-contained file with the manifest inlined — no CDN, no webfonts, no telemetry, no network calls of any kind. It re-reads `cartograph.json` on every refresh, so a re-scan shows up without restarting the server.
 
 ### Optional: plain-English descriptions
 
@@ -98,7 +110,7 @@ Plain markdown with no vendor-specific syntax — paste it into Claude Code, Cur
 
 Two standard algorithms, no custom scoring:
 
-- **Importance — PageRank** over the directed import graph, where an edge runs `importer → imported`. A file gains rank from every file that imports it, the same way a web page gains rank from inbound links. This is why `lib/utils.js` tops the Express list: five other `lib/` modules import it.
+- **Importance — PageRank** over the directed import graph, where an edge runs `importer → imported`. A file gains rank from every file that imports it, the same way a web page gains rank from inbound links. This is why `lib/utils.js` tops the Express list: it has the most inbound edges (`lib/application.js` and `lib/response.js`), and both of those are themselves imported by the app factory — rank flows through.
 - **Subsystems — Louvain community detection**, grouping files that import each other densely while staying sparsely connected to the rest.
 
 Parsing is [tree-sitter](https://tree-sitter.github.io/), so the import extraction is real syntax analysis rather than regex — it handles ESM `import`, CommonJS `require()`, dynamic `import()`, and TypeScript's `import x = require()`.
@@ -132,14 +144,15 @@ Stated plainly, because a map you can't trust the boundaries of isn't much of a 
 - **Import edges only.** Function/class definitions and call references are not yet extracted, so the graph captures module structure rather than call flow.
 - **Monorepo subpath imports are not resolved.** Bare workspace imports (`@scope/pkg`) resolve correctly, but deep ones (`@scope/pkg/submodule`) are still treated as external.
 - **Descriptions cover the top ~15 files repo-wide,** not the top files *per cluster*. On a large repo most clusters get a name but no per-file prose.
-- **No visual map yet.** `cartograph serve` is not implemented.
+- **The map is a layout, not a floorplan.** Node positions come from a force simulation seeded by cluster, so they are stable in character but not identical between runs. Files with no imports either way are parked in a labelled margin block rather than placed by physics.
 - **Tests and examples are excluded** from the graph by default, since test helpers otherwise crowd out application code in the ranking.
+- **The map uses system fonts,** not the webfonts in the original design, so that `serve` makes no network requests at all.
 
 ## Roadmap
 
 - [x] **Layer 1 — Structure.** "What should the agent know?" Import graph, centrality, clustering, `AGENTS.md` + `cartograph.json`.
   - [x] CLI, tree-sitter parsing, PageRank, Louvain, LLM narration
-  - [ ] Interactive visual map (`cartograph serve`)
+  - [x] Interactive visual map (`cartograph serve`)
   - [ ] GitHub Action to keep output fresh on every merge
 - [ ] **Layer 2 — Trust.** "What shouldn't it trust?" Scanner for hidden instructions in repo content and dependency source, with a published labeled corpus. No accuracy number will be claimed without the dataset that produced it.
 - [ ] **Layer 3 — Replay.** "What did it actually do?" Overlay an agent run's real file reads and edits onto the same map.

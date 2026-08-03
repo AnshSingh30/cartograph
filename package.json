@@ -8,7 +8,7 @@
   },
   "scripts": {
     "cartograph": "tsx src/cli.ts",
-    "test": "tsx src/graph/graph.test.ts && tsx src/llm/narrative.test.ts"
+    "test": "tsx src/graph/graph.test.ts && tsx src/llm/narrative.test.ts && tsx src/serve.test.ts"
   },
   "license": "MIT",
   "dependencies": {
