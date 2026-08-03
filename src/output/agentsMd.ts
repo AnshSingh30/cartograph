@@ -14,12 +14,14 @@ export function buildAgentsMd(manifest: CartographManifest, topN = 15): string {
   lines.push("");
   for (const f of topFiles) {
     lines.push(`- \`${f.id}\` — cluster ${f.cluster}, ${f.loc} LOC, centrality ${f.centrality.toFixed(4)}`);
+    if (f.description) lines.push(`  - ${f.description}`);
   }
   lines.push("");
   lines.push("## Subsystem map");
   lines.push("");
   for (const cluster of manifest.clusters) {
-    lines.push(`### Cluster ${cluster.id} (${cluster.files.length} files)`);
+    const heading = cluster.label ? `${cluster.label} (cluster ${cluster.id})` : `Cluster ${cluster.id}`;
+    lines.push(`### ${heading} — ${cluster.files.length} files`);
     for (const file of cluster.files.slice(0, 20)) lines.push(`- \`${file}\``);
     if (cluster.files.length > 20) lines.push(`- ...and ${cluster.files.length - 20} more`);
     lines.push("");

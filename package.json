@@ -8,10 +8,11 @@
   },
   "scripts": {
     "cartograph": "tsx src/cli.ts",
-    "test": "tsx src/graph/graph.test.ts"
+    "test": "tsx src/graph/graph.test.ts && tsx src/llm/narrative.test.ts"
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "commander": "^15.0.0",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",

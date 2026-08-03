@@ -5,6 +5,7 @@ import path from "node:path";
 import { buildImportGraph } from "./graph/build.js";
 import { buildManifest } from "./output/cartographJson.js";
 import { buildAgentsMd } from "./output/agentsMd.js";
+import { describeManifest } from "./llm/narrative.js";
 
 const program = new Command();
 
@@ -14,7 +15,8 @@ program
   .command("scan")
   .argument("<path>", "path to the repo to scan")
   .option("-o, --out <dir>", "output directory", ".")
-  .action(async (targetPath: string, opts: { out: string }) => {
+  .option("--describe", "use an LLM to name clusters and describe top files (costs API credits)")
+  .action(async (targetPath: string, opts: { out: string; describe?: boolean }) => {
     const repoRoot = path.resolve(targetPath);
     const repoName = path.basename(repoRoot);
 
@@ -24,6 +26,19 @@ program
     console.log(`Parsed ${graph.order} files, ${graph.size} import edges in ${Date.now() - start}ms.`);
 
     const manifest = buildManifest(repoName, graph, loc);
+
+    if (opts.describe) {
+      console.log("Generating descriptions ...");
+      try {
+        const { clusters, files } = await describeManifest(manifest, repoRoot);
+        console.log(`Labelled ${clusters} clusters, described ${files} files.`);
+      } catch (err) {
+        // The graph is already built; fall back to rule-based output rather than lose the scan.
+        console.error(`Descriptions failed: ${err instanceof Error ? err.message : err}`);
+        console.error("Writing rule-based output instead.");
+      }
+    }
+
     const outDir = path.resolve(opts.out);
     fs.mkdirSync(outDir, { recursive: true });
     fs.writeFileSync(path.join(outDir, "cartograph.json"), JSON.stringify(manifest, null, 2));
