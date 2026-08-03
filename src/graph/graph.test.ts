@@ -2,7 +2,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildImportGraph } from "./build.js";
+import { buildImportGraph, countLines } from "./build.js";
 import { buildManifest } from "../output/cartographJson.js";
 
 async function main() {
@@ -39,7 +39,40 @@ async function main() {
 
   await tsEsmExtensionRewrite();
   await monorepoWorkspaceImports();
+  lineCounting();
+  await unreadableFilesAreSkipped();
   console.log("OK: graph.test.ts passed");
+}
+
+/** A trailing newline terminates the last line; counting it as one inflates every file by 1. */
+function lineCounting() {
+  assert.strictEqual(countLines(""), 0, "empty file has no lines");
+  assert.strictEqual(countLines("a"), 1);
+  assert.strictEqual(countLines("a\n"), 1, "trailing newline must not add a line");
+  assert.strictEqual(countLines("a\nb"), 2);
+  assert.strictEqual(countLines("a\nb\n"), 2, "trailing newline must not add a line");
+  assert.strictEqual(countLines("\n"), 1, "a lone newline is one empty line");
+  assert.strictEqual(countLines("a\n\n"), 2, "a deliberate blank last line still counts");
+}
+
+/** A directory the scanner cannot read must cost only that directory, not the whole scan. */
+async function unreadableFilesAreSkipped() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cartograph-perm-"));
+  fs.writeFileSync(path.join(dir, "ok.js"), `require('./other');`);
+  fs.writeFileSync(path.join(dir, "other.js"), `module.exports = 1;`);
+  const locked = path.join(dir, "locked");
+  fs.mkdirSync(locked);
+  fs.writeFileSync(path.join(locked, "hidden.js"), `module.exports = 2;`);
+  fs.chmodSync(locked, 0o000);
+
+  try {
+    const { graph } = await buildImportGraph(dir);
+    assert.ok(graph.hasNode("ok.js"), "readable files must still be scanned");
+    assert.ok(graph.hasEdge("ok.js", "other.js"), "edges among readable files must survive");
+  } finally {
+    fs.chmodSync(locked, 0o755);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**

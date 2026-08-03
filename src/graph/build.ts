@@ -19,8 +19,25 @@ const IGNORE_DIRS = new Set([
   "fixtures",
 ]);
 
+/** Lines in a file. A trailing newline terminates the last line rather than starting a new one. */
+export function countLines(source: string): number {
+  if (source === "") return 0;
+  const n = source.split("\n").length;
+  return source.endsWith("\n") ? n - 1 : n;
+}
+
+/** Directory entries, or none if the directory cannot be read. */
+function readDirSafe(dir: string): fs.Dirent[] {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // One unreadable directory (permissions, a broken mount) must not abort the whole scan.
+    return [];
+  }
+}
+
 function walk(dir: string, files: string[] = []): string[] {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of readDirSafe(dir)) {
     if (entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -42,7 +59,7 @@ const EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"
  * main/module/exports: those point at build output that does not exist in a fresh clone.
  */
 function findWorkspacePackages(repoRoot: string, dir = repoRoot, out = new Map<string, string>()): Map<string, string> {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of readDirSafe(dir)) {
     if (entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -119,8 +136,14 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
   for (let i = 0; i < absFiles.length; i++) {
     const rel = relFiles[i];
     const lang = langForFile(absFiles[i]) as Lang;
-    const source = fs.readFileSync(absFiles[i], "utf8");
-    loc.set(rel, source.split("\n").length);
+    let source: string;
+    try {
+      source = fs.readFileSync(absFiles[i], "utf8");
+    } catch {
+      // Deleted or unreadable since the walk. Keep the node, skip its edges.
+      continue;
+    }
+    loc.set(rel, countLines(source));
 
     const specifiers = await extractImportSpecifiers(source, lang);
     for (const spec of specifiers) {

@@ -8,6 +8,23 @@ export function render(shell: string, manifest: string): string {
   return shell.replace("__CARTOGRAPH_DATA__", manifest.replace(/</g, "\\u003c"));
 }
 
+/**
+ * Rejects JSON that parses but is not a manifest. Without this the page loads and then
+ * dies in the browser console, which looks like a broken UI rather than a wrong file.
+ */
+export function assertManifest(raw: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`cartograph.json is not valid JSON: ${err instanceof Error ? err.message : err}`);
+  }
+  const m = parsed as { nodes?: unknown; edges?: unknown };
+  if (!m || typeof m !== "object" || !Array.isArray(m.nodes) || !Array.isArray(m.edges)) {
+    throw new Error("cartograph.json is missing a `nodes` or `edges` array — is it a Cartograph manifest?");
+  }
+}
+
 function openBrowser(url: string): void {
   const cmd =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
@@ -25,6 +42,14 @@ export function serve(dir: string, port: number, open: boolean): void {
     process.exit(1);
   }
 
+  // Fail at startup rather than on the first request, so the problem is visible immediately.
+  try {
+    assertManifest(fs.readFileSync(manifestPath, "utf8"));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
   const shellPath = path.join(import.meta.dirname, "ui", "app.html");
   const server = http.createServer((req, res) => {
     if (req.url !== "/" && req.url !== "/index.html") {
@@ -33,7 +58,9 @@ export function serve(dir: string, port: number, open: boolean): void {
     }
     // Both files are re-read per request so a re-scan shows up on refresh.
     try {
-      const html = render(fs.readFileSync(shellPath, "utf8"), fs.readFileSync(manifestPath, "utf8"));
+      const manifest = fs.readFileSync(manifestPath, "utf8");
+      assertManifest(manifest);
+      const html = render(fs.readFileSync(shellPath, "utf8"), manifest);
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
     } catch (err) {
       res.writeHead(500).end(`Failed to read map: ${err instanceof Error ? err.message : err}`);

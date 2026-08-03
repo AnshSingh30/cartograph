@@ -11,6 +11,15 @@ import { serve } from "./serve.js";
 // Load .env from the working directory. Shell-exported vars take precedence.
 if (fs.existsSync(".env")) process.loadEnvFile();
 
+// Commander action handlers are async, so anything they throw arrives here. Node already
+// exits non-zero on an unhandled rejection; this replaces the stack dump with one line.
+// Set CARTOGRAPH_DEBUG=1 to get the original trace back.
+process.on("unhandledRejection", (err) => {
+  if (process.env.CARTOGRAPH_DEBUG) throw err;
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
+
 const program = new Command();
 
 program.name("cartograph").description("Structural map of your repo for humans and coding agents.");
@@ -23,6 +32,19 @@ program
   .action(async (targetPath: string, opts: { out: string; describe?: boolean }) => {
     const repoRoot = path.resolve(targetPath);
     const repoName = path.basename(repoRoot);
+
+    // Check before scanning: a typo'd path should say so, not surface an fs stack trace.
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(repoRoot);
+    } catch {
+      console.error(`No such directory: ${repoRoot}`);
+      process.exit(1);
+    }
+    if (!stat.isDirectory()) {
+      console.error(`Not a directory: ${repoRoot}`);
+      process.exit(1);
+    }
 
     console.log(`Scanning ${repoRoot} ...`);
     const start = Date.now();

@@ -28,27 +28,31 @@ const TS_REQUIRE_QUERY = `
 `;
 
 let initialized = false;
-const languages = new Map<Lang, Parser.Language>();
+// One parser per language, reused for every file. A parser holds WASM memory that JS
+// garbage collection does not reclaim, so allocating one per file leaks for the whole scan.
+const parsers = new Map<Lang, Parser>();
 const queries = new Map<Lang, Parser.Query[]>();
 
-async function loadLanguage(lang: Lang): Promise<{
-  language: Parser.Language;
+async function loadParser(lang: Lang): Promise<{
+  parser: Parser;
   queries: Parser.Query[];
 }> {
   if (!initialized) {
     await Parser.init();
     initialized = true;
   }
-  let language = languages.get(lang);
-  if (!language) {
+  let parser = parsers.get(lang);
+  if (!parser) {
     const wasmPath = fileURLToPath(import.meta.resolve(GRAMMAR_SPECIFIER[lang]));
-    language = await Parser.Language.load(wasmPath);
-    languages.set(lang, language);
+    const language = await Parser.Language.load(wasmPath);
+    parser = new Parser();
+    parser.setLanguage(language);
+    parsers.set(lang, parser);
     const langQueries = [language.query(BASE_QUERY)];
     if (lang !== "javascript") langQueries.push(language.query(TS_REQUIRE_QUERY));
     queries.set(lang, langQueries);
   }
-  return { language, queries: queries.get(lang)! };
+  return { parser, queries: queries.get(lang)! };
 }
 
 export function langForFile(filePath: string): Lang | null {
@@ -60,15 +64,19 @@ export function langForFile(filePath: string): Lang | null {
 
 /** Raw import specifiers found in a source file (e.g. "./foo", "some-pkg"). Unresolved. */
 export async function extractImportSpecifiers(source: string, lang: Lang): Promise<string[]> {
-  const { language, queries: langQueries } = await loadLanguage(lang);
-  const parser = new Parser();
-  parser.setLanguage(language);
+  const { parser, queries: langQueries } = await loadParser(lang);
+  // Everything after this point is synchronous, so the shared parser cannot be
+  // re-entered and the tree is always freed before another parse starts.
   const tree = parser.parse(source);
-  const specifiers: string[] = [];
-  for (const query of langQueries) {
-    for (const capture of query.captures(tree.rootNode)) {
-      if (capture.name === "import") specifiers.push(capture.node.text);
+  try {
+    const specifiers: string[] = [];
+    for (const query of langQueries) {
+      for (const capture of query.captures(tree.rootNode)) {
+        if (capture.name === "import") specifiers.push(capture.node.text);
+      }
     }
+    return specifiers;
+  } finally {
+    tree.delete();
   }
-  return specifiers;
 }

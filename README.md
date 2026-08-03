@@ -123,10 +123,12 @@ Anything an LLM contributes is **narration only**. It never influences the ranki
 
 | Repo | Files scanned | LOC | Parse + graph build |
 |---|---|---|---|
-| [vuejs/core](https://github.com/vuejs/core) | 320 | 66,625 | **~0.45s** |
-| [expressjs/express](https://github.com/expressjs/express) | 7 | 2,783 | **~0.04s** |
+| [vuejs/core](https://github.com/vuejs/core) | 320 | 66,305 | **~0.7s** |
+| [expressjs/express](https://github.com/expressjs/express) | 7 | 2,776 | **~0.04s** |
 
 Median of 3 runs on an M-series MacBook Air, excluding the optional `--describe` pass. Reproduce with `npx tsx src/cli.ts scan <repo>` — the CLI prints its own timing.
+
+Memory is dominated by loading the tree-sitter grammar, not by repo size: about **1.6 GB fixed** for TypeScript (570 MB for JavaScript only), plus roughly 4 MB per file. Measured by scanning single Vue packages — 13 files and 65 files land within 220 MB of each other. Fine on a laptop or a CI runner; worth knowing before running it in a memory-capped container.
 
 ## Privacy
 

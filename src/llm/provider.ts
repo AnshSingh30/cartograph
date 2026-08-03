@@ -17,6 +17,10 @@ export function detectProvider(): Provider | null {
   return null;
 }
 
+// A description pass that never returns is worse than one that fails: the caller in cli.ts
+// falls back to rule-based output, but only once the request actually gives up.
+const TIMEOUT_MS = 120_000;
+
 export async function generateText(prompt: string): Promise<string> {
   const provider = detectProvider();
   if (!provider) {
@@ -25,7 +29,7 @@ export async function generateText(prompt: string): Promise<string> {
   const model = process.env.CARTOGRAPH_MODEL || DEFAULT_MODEL[provider];
 
   if (provider === "anthropic") {
-    const response = await new Anthropic().messages.create({
+    const response = await new Anthropic({ timeout: TIMEOUT_MS }).messages.create({
       model,
       max_tokens: 16000,
       messages: [{ role: "user", content: prompt }],
@@ -47,6 +51,7 @@ export async function generateText(prompt: string): Promise<string> {
       max_tokens: 16000,
       messages: [{ role: "user", content: prompt }],
     }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
