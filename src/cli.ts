@@ -7,6 +7,9 @@ import { buildManifest } from "./output/cartographJson.js";
 import { buildAgentsMd } from "./output/agentsMd.js";
 import { describeManifest } from "./llm/narrative.js";
 
+// Load .env from the working directory. Shell-exported vars take precedence.
+if (fs.existsSync(".env")) process.loadEnvFile();
+
 const program = new Command();
 
 program.name("cartograph").description("Structural map of your repo for humans and coding agents.");
