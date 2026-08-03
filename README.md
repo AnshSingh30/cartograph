@@ -103,13 +103,15 @@ Two standard algorithms, no custom scoring:
 
 Parsing is [tree-sitter](https://tree-sitter.github.io/), so the import extraction is real syntax analysis rather than regex — it handles ESM `import`, CommonJS `require()`, dynamic `import()`, and TypeScript's `import x = require()`.
 
+**Monorepos are handled.** Workspace packages that import each other by name (`@scope/pkg`) are resolved by reading the `name` field of every `package.json`, so packages whose directory differs from their published name still link up correctly. Genuine `node_modules` dependencies stay excluded from the graph.
+
 Anything an LLM contributes is **narration only**. It never influences the ranking or the clustering.
 
 ## Performance
 
 | Repo | Files scanned | LOC | Parse + graph build |
 |---|---|---|---|
-| [vuejs/core](https://github.com/vuejs/core) | 320 | 66,625 | **~0.5s** |
+| [vuejs/core](https://github.com/vuejs/core) | 320 | 66,625 | **~0.45s** |
 | [expressjs/express](https://github.com/expressjs/express) | 7 | 2,783 | **~0.04s** |
 
 Median of 3 runs on an M-series MacBook Air, excluding the optional `--describe` pass. Reproduce with `npx tsx src/cli.ts scan <repo>` — the CLI prints its own timing.
@@ -128,7 +130,7 @@ Stated plainly, because a map you can't trust the boundaries of isn't much of a 
 
 - **JavaScript and TypeScript only.** Python is planned but not implemented.
 - **Import edges only.** Function/class definitions and call references are not yet extracted, so the graph captures module structure rather than call flow.
-- **Monorepo cross-package imports are dropped.** Workspace-internal imports like `@scope/pkg` are treated as external dependencies. On vuejs/core this discards ~489 internal edges, inflating the orphan-file count. Being fixed next.
+- **Monorepo subpath imports are not resolved.** Bare workspace imports (`@scope/pkg`) resolve correctly, but deep ones (`@scope/pkg/submodule`) are still treated as external.
 - **Descriptions cover the top ~15 files repo-wide,** not the top files *per cluster*. On a large repo most clusters get a name but no per-file prose.
 - **No visual map yet.** `cartograph serve` is not implemented.
 - **Tests and examples are excluded** from the graph by default, since test helpers otherwise crowd out application code in the ranking.

@@ -38,7 +38,46 @@ async function main() {
   fs.rmSync(dir, { recursive: true, force: true });
 
   await tsEsmExtensionRewrite();
+  await monorepoWorkspaceImports();
   console.log("OK: graph.test.ts passed");
+}
+
+/**
+ * Monorepo packages import each other by bare name ("@scope/pkg"), not by relative path.
+ * Treating those as external dependencies silently drops most of a monorepo's internal graph.
+ */
+async function monorepoWorkspaceImports() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cartograph-mono-"));
+  const pkg = (dirName: string, name: string) => {
+    fs.mkdirSync(path.join(dir, "packages", dirName, "src"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "packages", dirName, "package.json"), JSON.stringify({ name }));
+  };
+  // "@fix/renamed" deliberately lives in a directory that does NOT match its package name --
+  // the case naive name-to-directory guessing gets wrong (cf. @vue/compat in packages/vue-compat).
+  pkg("shared", "@fix/shared");
+  pkg("odd-dirname", "@fix/renamed");
+  pkg("app", "@fix/app");
+  fs.writeFileSync(path.join(dir, "packages", "shared", "src", "index.ts"), `export const s = 1;`);
+  fs.writeFileSync(path.join(dir, "packages", "odd-dirname", "src", "index.ts"), `export const r = 2;`);
+  fs.writeFileSync(
+    path.join(dir, "packages", "app", "src", "main.ts"),
+    `import { s } from "@fix/shared";\nimport { r } from "@fix/renamed";\nimport express from "express";\n`,
+  );
+
+  const { graph } = await buildImportGraph(dir);
+  assert.ok(
+    graph.hasEdge("packages/app/src/main.ts", "packages/shared/src/index.ts"),
+    'bare "@fix/shared" must resolve to the workspace package source',
+  );
+  assert.ok(
+    graph.hasEdge("packages/app/src/main.ts", "packages/odd-dirname/src/index.ts"),
+    'package name must be read from package.json, not inferred from the directory name',
+  );
+  // A genuine node_modules dependency must still be excluded rather than invented as a node.
+  assert.ok(!graph.hasNode("express"), "external dependencies must not become graph nodes");
+  assert.strictEqual(graph.size, 2, "expected exactly 2 edges (external import excluded)");
+
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /**
