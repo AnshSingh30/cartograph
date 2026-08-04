@@ -156,7 +156,7 @@ Two standard algorithms, no custom scoring:
 - **Importance — PageRank** over the directed import graph, where an edge runs `importer → imported`. A file gains rank from every file that imports it, the same way a web page gains rank from inbound links. This is why `lib/utils.js` tops the Express list: it has the most inbound edges (`lib/application.js` and `lib/response.js`), and both of those are themselves imported by the app factory — rank flows through.
 - **Subsystems — Louvain community detection**, grouping files that import each other densely while staying sparsely connected to the rest.
 
-Parsing is [tree-sitter](https://tree-sitter.github.io/), so the import extraction is real syntax analysis rather than regex — it handles ESM `import`, CommonJS `require()`, dynamic `import()`, and TypeScript's `import x = require()`.
+Parsing is [tree-sitter](https://tree-sitter.github.io/), so the import extraction is real syntax analysis rather than regex — it handles ESM `import`, CommonJS `require()`, dynamic `import()`, TypeScript's `import x = require()`, and Python's `import`/`from...import` including relative imports (`from . import x`, `from ..pkg import y`).
 
 **Monorepos are handled.** Workspace packages that import each other by name (`@scope/pkg`) are resolved by reading the `name` field of every `package.json`, so packages whose directory differs from their published name still link up correctly. Genuine `node_modules` dependencies stay excluded from the graph.
 
@@ -185,7 +185,8 @@ The only step that makes a network call is `--describe`, which is opt-in.
 
 Stated plainly, because a map you can't trust the boundaries of isn't much of a map:
 
-- **JavaScript and TypeScript only.** Python is planned but not implemented.
+- **JavaScript, TypeScript, and Python.** Other languages are planned but not implemented.
+- **Python absolute imports resolve from the repo root** (with a `src/` layout fallback), the same convention `sys.path` uses in practice. A package installed from somewhere other than the repo root, or added to `sys.path` at runtime, won't resolve.
 - **Import edges only.** Function/class definitions and call references are not yet extracted, so the graph captures module structure rather than call flow.
 - **Monorepo subpath imports are not resolved.** Bare workspace imports (`@scope/pkg`) resolve correctly, but deep ones (`@scope/pkg/submodule`) are still treated as external.
 - **Descriptions cover the top ~15 files repo-wide,** not the top files *per cluster*. On a large repo most clusters get a name but no per-file prose.

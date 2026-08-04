@@ -31,6 +31,16 @@ export interface CartographManifest {
   clusters: CartographCluster[];
 }
 
+/** Summarizes which of the supported languages are actually present, so a Python-only or
+ * mixed repo doesn't get mislabeled as "javascript/typescript". */
+function detectLanguages(ids: string[]): string {
+  const hasJsTs = ids.some((id) => /\.(m|c)?(j|t)sx?$/.test(id));
+  const hasPython = ids.some((id) => id.endsWith(".py"));
+  if (hasJsTs && hasPython) return "javascript/typescript, python";
+  if (hasPython) return "python";
+  return "javascript/typescript";
+}
+
 export function buildManifest(
   repoName: string,
   graph: Graph,
@@ -65,7 +75,7 @@ export function buildManifest(
   return {
     repo: repoName,
     generated_at: new Date().toISOString(),
-    language: "javascript/typescript",
+    language: detectLanguages(graph.nodes()),
     nodes,
     edges,
     clusters,

@@ -17,6 +17,17 @@ const IGNORE_DIRS = new Set([
   "examples",
   "example",
   "fixtures",
+  // Python virtual envs and caches -- unlike node_modules these carry no name a bare-import
+  // specifier would ever reference, so skipping them loses nothing but scan time.
+  "__pycache__",
+  "venv",
+  ".venv",
+  "env",
+  "site-packages",
+  ".tox",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
 ]);
 
 /** Lines in a file. A trailing newline terminates the last line rather than starting a new one. */
@@ -118,6 +129,44 @@ function resolveImport(
   return null;
 }
 
+/** First existing candidate for a Python module path: the module file, then its package init. */
+function resolvePyModulePath(base: string, fileSet: Set<string>): string | null {
+  if (fileSet.has(`${base}.py`)) return `${base}.py`;
+  if (fileSet.has(`${base}/__init__.py`)) return `${base}/__init__.py`;
+  return null;
+}
+
+/**
+ * Resolves a Python import specifier (dot-encoded by extractImportSpecifiers, e.g. "foo.bar"
+ * or "..pkg.mod") to a repo-relative path, or null.
+ *
+ * Absolute imports (no leading dot) resolve from the repo root, with a "src/" fallback
+ * mirroring the existing JS workspace-package heuristic below. Relative imports resolve by
+ * walking up from the importing file's own directory: one leading dot means "this file's own
+ * directory" and each further dot goes up one more level. This is the same rule Python's
+ * import system itself uses (importlib._bootstrap._resolve_name) -- level 1 never strips a
+ * directory, level 2 strips one, and so on -- derived and cross-checked against CPython's
+ * source rather than guessed, since getting the off-by-one wrong here silently drops or
+ * misroutes every relative import in the file.
+ */
+function resolvePythonImport(fromFile: string, specifier: string, fileSet: Set<string>): string | null {
+  const level = specifier.match(/^\.*/)![0].length;
+  const parts = specifier.slice(level).split(".").filter(Boolean);
+
+  if (level === 0) {
+    const base = parts.join("/");
+    return resolvePyModulePath(base, fileSet) ?? resolvePyModulePath(`src/${base}`, fileSet);
+  }
+
+  const fromDir = path.posix.dirname(fromFile);
+  const dirParts = fromDir === "." ? [] : fromDir.split("/");
+  const stripCount = level - 1;
+  if (stripCount > dirParts.length) return null; // "attempted relative import beyond top-level package"
+  const baseDirParts = stripCount === 0 ? dirParts : dirParts.slice(0, dirParts.length - stripCount);
+
+  return resolvePyModulePath([...baseDirParts, ...parts].join("/"), fileSet);
+}
+
 export interface BuiltGraph {
   graph: Graph;
   loc: Map<string, number>;
@@ -147,7 +196,7 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
 
     const specifiers = await extractImportSpecifiers(source, lang);
     for (const spec of specifiers) {
-      const target = resolveImport(rel, spec, fileSet, packages);
+      const target = lang === "python" ? resolvePythonImport(rel, spec, fileSet) : resolveImport(rel, spec, fileSet, packages);
       if (target && target !== rel && !graph.hasEdge(rel, target)) {
         graph.addEdge(rel, target, { type: "import" });
       }

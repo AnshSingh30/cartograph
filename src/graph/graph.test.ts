@@ -41,7 +41,46 @@ async function main() {
   await monorepoWorkspaceImports();
   lineCounting();
   await unreadableFilesAreSkipped();
+  await pythonImports();
   console.log("OK: graph.test.ts passed");
+}
+
+/**
+ * Python's relative-import level (each leading dot) walks up one directory per dot beyond
+ * the first, and "from X import Y" is ambiguous between Y being a symbol inside X and Y
+ * being a submodule of X -- both are common, and getting either wrong silently drops most
+ * of a real Python codebase's internal graph, the same failure mode the ESM ".js" rewrite
+ * above exists to catch for TypeScript.
+ */
+async function pythonImports() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cartograph-py-"));
+  const write = (rel: string, content: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), content);
+  };
+
+  write("main.py", `import pkg.mod\nfrom pkg import HELPER\n`);
+  write("pkg/__init__.py", `HELPER = 1\n`);
+  write("pkg/mod.py", `X = 1\n`);
+  write("pkg/sub/__init__.py", ``);
+  write("pkg/sub/a.py", `from . import b\n`); // level 1: same directory
+  write("pkg/sub/b.py", `X = 1\n`);
+  write("pkg/sub/c.py", `from .. import mod\n`); // level 2: up to pkg/, hits pkg/mod.py directly
+
+  const { graph } = await buildImportGraph(dir);
+
+  assert.ok(graph.hasEdge("main.py", "pkg/mod.py"), 'absolute "import pkg.mod" must resolve to pkg/mod.py');
+  assert.ok(
+    graph.hasEdge("main.py", "pkg/__init__.py"),
+    'from pkg import HELPER: HELPER is a symbol not a submodule, so this must fall back to resolving "pkg" itself',
+  );
+  assert.ok(graph.hasEdge("pkg/sub/a.py", "pkg/sub/b.py"), "level-1 relative import must stay in the same directory");
+  assert.ok(
+    graph.hasEdge("pkg/sub/c.py", "pkg/mod.py"),
+    "level-2 relative import must go up exactly one directory from the importing file's own package",
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /** A trailing newline terminates the last line; counting it as one inflates every file by 1. */
