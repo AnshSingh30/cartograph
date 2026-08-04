@@ -1,0 +1,120 @@
+name: "Cartograph"
+description: "Regenerate AGENTS.md and cartograph.json so the repo map never goes stale."
+author: "Ansh Singh"
+
+branding:
+  icon: "map"
+  color: "orange"
+
+inputs:
+  path:
+    description: "Repo directory to scan."
+    required: false
+    default: "."
+  out:
+    description: "Directory to write AGENTS.md and cartograph.json into."
+    required: false
+    default: "."
+  mode:
+    description: "What to do with the result: commit, pr, or check (fail if output is stale)."
+    required: false
+    default: "commit"
+  describe:
+    description: "Use an LLM to name clusters and describe top files. Needs api-key."
+    required: false
+    default: "false"
+  api-key:
+    description: "OPENROUTER_API_KEY or ANTHROPIC_API_KEY. Only read when describe is true."
+    required: false
+    default: ""
+  model:
+    description: "Override the model used by describe."
+    required: false
+    default: ""
+  commit-message:
+    description: "Commit message used by the commit and pr modes."
+    required: false
+    default: "chore: refresh Cartograph map"
+
+outputs:
+  changed:
+    description: "true when the generated output differs from what was committed."
+    value: ${{ steps.diff.outputs.changed }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    # The action runs from its own checkout, so its dependencies and build are
+    # independent of whatever the consuming repo has installed.
+    - name: Build Cartograph
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --no-audit --no-fund
+        npm run build
+
+    - name: Scan
+      shell: bash
+      env:
+        # Only exported when describe is on, so a plain run cannot make a network call.
+        OPENROUTER_API_KEY: ${{ inputs.describe == 'true' && !startsWith(inputs.api-key, 'sk-ant-') && inputs.api-key || '' }}
+        ANTHROPIC_API_KEY: ${{ inputs.describe == 'true' && startsWith(inputs.api-key, 'sk-ant-') && inputs.api-key || '' }}
+        CARTOGRAPH_MODEL: ${{ inputs.model }}
+      run: |
+        set -euo pipefail
+        if [ "${{ inputs.describe }}" = "true" ] && [ -z "${{ inputs.api-key }}" ]; then
+          echo "::error::describe is true but no api-key was provided."
+          exit 1
+        fi
+        DESCRIBE=""
+        if [ "${{ inputs.describe }}" = "true" ]; then DESCRIBE="--describe"; fi
+        node "${{ github.action_path }}/dist/cli.js" scan "${{ inputs.path }}" --out "${{ inputs.out }}" $DESCRIBE
+
+    - name: Detect changes
+      id: diff
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "$(git status --porcelain -- '${{ inputs.out }}/AGENTS.md' '${{ inputs.out }}/cartograph.json')" ]; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "Map is already up to date."
+        fi
+
+    - name: Fail if stale
+      if: inputs.mode == 'check'
+      shell: bash
+      run: node "${{ github.action_path }}/scripts/map-changed.js" "${{ inputs.out }}/cartograph.json"
+
+    - name: Commit
+      if: inputs.mode == 'commit' && steps.diff.outputs.changed == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -- "${{ inputs.out }}/AGENTS.md" "${{ inputs.out }}/cartograph.json"
+        git commit -m "${{ inputs.commit-message }}"
+        git push
+
+    - name: Open a pull request
+      if: inputs.mode == 'pr' && steps.diff.outputs.changed == 'true'
+      uses: peter-evans/create-pull-request@v7
+      with:
+        commit-message: ${{ inputs.commit-message }}
+        title: ${{ inputs.commit-message }}
+        body: |
+          The repo structure changed, so the Cartograph map has been regenerated.
+
+          Review the `AGENTS.md` diff to see which files moved in or out of the
+          load-bearing set, and whether any subsystem boundaries shifted.
+        branch: cartograph/refresh
+        add-paths: |
+          ${{ inputs.out }}/AGENTS.md
+          ${{ inputs.out }}/cartograph.json

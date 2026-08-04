@@ -1,0 +1,69 @@
+name: Demo
+
+# Publishes pre-generated maps of recognisable repos to GitHub Pages, so the tool
+# can be seen working without cloning or installing anything.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+
+      # Shallow clones: the map only needs the working tree, not the history.
+      - name: Clone demo repos
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/expressjs/express.git /tmp/express
+          git clone --depth 1 https://github.com/vuejs/core.git /tmp/vue
+
+      # No API key, so this is the fully offline path -- clusters stay numbered
+      # rather than named. The demo must never depend on a secret to build.
+      - name: Scan and export
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          for demo in "express:/tmp/express" "vue:/tmp/vue"; do
+            name="${demo%%:*}"
+            path="${demo#*:}"
+            node dist/cli.js scan "$path" --out "/tmp/out-$name"
+            node dist/cli.js export "/tmp/out-$name" --out "site/$name.html"
+            cp "/tmp/out-$name/cartograph.json" "site/$name.cartograph.json"
+            cp "/tmp/out-$name/AGENTS.md" "site/$name.AGENTS.md"
+          done
+
+      - name: Build the landing page
+        run: node scripts/build-demo-index.js site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

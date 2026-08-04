@@ -1,0 +1,42 @@
+name: Cartograph
+
+# Dogfood: keep this repo's own map current, and prove the action works on every push.
+on:
+  push:
+    branches: [main]
+    # The action commits AGENTS.md and cartograph.json. Ignoring them here stops
+    # that commit from triggering this workflow again.
+    paths-ignore:
+      - "AGENTS.md"
+      - "cartograph.json"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cartograph-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build
+
+      # On a PR the map must not be committed; just report whether it drifted.
+      - name: Refresh the map
+        uses: ./
+        with:
+          mode: ${{ github.event_name == 'push' && 'commit' || 'check' }}
+          commit-message: "chore: refresh Cartograph map"

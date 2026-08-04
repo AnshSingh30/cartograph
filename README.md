@@ -6,7 +6,7 @@ Aider computes a repo map with PageRank. Claude Code explores live with grep and
 
 Cartograph produces that artifact: `cartograph.json` for machines and `AGENTS.md` for humans and agents alike.
 
-> **Status: v0.1, in progress.** The structure layer and its visual map work and are validated on real repos. CI integration is not built yet — see [Current limitations](#current-limitations). This README describes only what runs today.
+> **Status: v0.1.** Layer 1 is complete — scanner, visual map, and CI integration, validated on real repos. Layers 2 and 3 are not built; see [Current limitations](#current-limitations). This README describes only what runs today.
 
 ---
 
@@ -63,6 +63,26 @@ npx tsx src/cli.ts scan /path/to/your/repo --describe
 ```
 
 Works with either **Anthropic** (`ANTHROPIC_API_KEY`) or **OpenRouter** (`OPENROUTER_API_KEY`) — set whichever you have. This step is opt-in behind `--describe`, so a scan never spends credits unless you ask it to. If the call fails, the scan still writes its rule-based output rather than losing your work.
+
+---
+
+## Keeping it fresh in CI
+
+A map that drifts from the code is worse than no map. The bundled action regenerates `AGENTS.md` and `cartograph.json` and commits them when the structure actually changes:
+
+```yaml
+- uses: AnshSingh30/cartograph@main
+  with:
+    mode: commit          # commit | pr | check
+```
+
+- **`commit`** — push the refreshed map straight to the branch.
+- **`pr`** — open a pull request instead, so the diff gets reviewed.
+- **`check`** — fail the build if the committed map is stale. Use this on pull requests.
+
+`check` compares the manifest with `generated_at` removed, because that timestamp moves on every run — a plain `git diff` would fail every PR regardless of whether anything real changed.
+
+The action runs the offline scan by default. Pass `describe: true` with an `api-key` to name subsystems, and nothing reaches the network without it.
 
 ---
 
@@ -169,8 +189,8 @@ Stated plainly, because a map you can't trust the boundaries of isn't much of a 
 
 - [x] **Layer 1 — Structure.** "What should the agent know?" Import graph, centrality, clustering, `AGENTS.md` + `cartograph.json`.
   - [x] CLI, tree-sitter parsing, PageRank, Louvain, LLM narration
-  - [x] Interactive visual map (`cartograph serve`)
-  - [ ] GitHub Action to keep output fresh on every merge
+  - [x] Interactive visual map (`cartograph serve`, `cartograph export`)
+  - [x] GitHub Action to keep output fresh on every merge, plus a hosted demo
 - [ ] **Layer 2 — Trust.** "What shouldn't it trust?" Scanner for hidden instructions in repo content and dependency source, with a published labeled corpus. No accuracy number will be claimed without the dataset that produced it.
 - [ ] **Layer 3 — Replay.** "What did it actually do?" Overlay an agent run's real file reads and edits onto the same map.
 
