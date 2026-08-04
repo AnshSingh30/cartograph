@@ -22,7 +22,7 @@ const layered = buildAgentsMd(
   ),
 );
 assert.match(layered, /## Conventions/);
-assert.match(layered, /Handlers \(cluster 0\) depends on DB \(cluster 1\) \(2 imports\), never the reverse/);
+assert.match(layered, /Handlers \(subsystem 0\) depends on DB \(subsystem 1\) \(2 imports\), never the reverse/);
 
 // Two clusters importing each other is a cycle between subsystems -- a genuine architecture
 // smell, and the opposite conclusion from the unidirectional case, so it must be labelled

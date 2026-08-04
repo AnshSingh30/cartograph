@@ -14,7 +14,7 @@ const MAX_RELATIONSHIPS = 20;
 function detectLayering(manifest: CartographManifest): string[] {
   const label = (id: number) => {
     const cluster = manifest.clusters.find((c) => c.id === id);
-    return cluster?.label ? `${cluster.label} (cluster ${id})` : `Cluster ${id}`;
+    return cluster?.label ? `${cluster.label} (subsystem ${id})` : `Subsystem ${id}`;
   };
   const clusterOf = new Map(manifest.nodes.map((n) => [n.id, n.cluster]));
 
@@ -81,7 +81,7 @@ export function buildAgentsMd(manifest: CartographManifest, topN = 15): string {
   lines.push("## Subsystem map");
   lines.push("");
   for (const cluster of manifest.clusters) {
-    const heading = cluster.label ? `${cluster.label} (cluster ${cluster.id})` : `Cluster ${cluster.id}`;
+    const heading = cluster.label ? `${cluster.label} (subsystem ${cluster.id})` : `Subsystem ${cluster.id}`;
     lines.push(`### ${heading} — ${cluster.files.length} files`);
     for (const file of cluster.files.slice(0, 20)) lines.push(`- \`${file}\``);
     if (cluster.files.length > 20) lines.push(`- ...and ${cluster.files.length - 20} more`);

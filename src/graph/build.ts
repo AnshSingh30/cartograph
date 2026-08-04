@@ -90,6 +90,154 @@ function findWorkspacePackages(repoRoot: string, dir = repoRoot, out = new Map<s
   return out;
 }
 
+/**
+ * Strips // and /* *\/ comments and trailing commas from tsconfig.json, which is JSONC and
+ * breaks JSON.parse otherwise. Tracks string boundaries so a "//" or "/*" inside a string
+ * value (e.g. a URL) is never mistaken for a comment.
+ */
+export function stripJsonComments(text: string): string {
+  let out = "";
+  let inString = false;
+  let quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (inString) {
+      out += ch;
+      if (ch === "\\") {
+        out += next ?? "";
+        i++;
+      } else if (ch === quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      out += "\n";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i++; // land on the closing "/"
+      continue;
+    }
+    out += ch;
+  }
+  // Trailing commas: a comma followed by only whitespace/comments (already blanked above) before } or ].
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+interface TsconfigInfo {
+  /** Repo-relative directory that `paths` targets are resolved against (tsconfig dir + baseUrl). */
+  baseDir: string;
+  paths: Record<string, string[]>;
+}
+
+/** Resolves a tsconfig "extends" value to an absolute path, or null if it's an npm package (unresolvable in a fresh clone, same reasoning as package.json main/module/exports elsewhere in this file). */
+function resolveExtendsPath(fromTsconfig: string, extendsValue: string): string | null {
+  if (!extendsValue.startsWith(".")) return null;
+  const base = path.resolve(path.dirname(fromTsconfig), extendsValue);
+  for (const candidate of [base, `${base}.json`]) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+/** Reads one tsconfig.json, following `extends` (local files only). A config that declares its own `paths` wins outright over any inherited one -- TypeScript does not merge them key-by-key. */
+function readTsconfig(absPath: string, seen = new Set<string>()): { baseUrl?: string; paths?: Record<string, string[]> } {
+  if (seen.has(absPath)) return {}; // cyclic extends
+  seen.add(absPath);
+
+  let parsed: { extends?: string; compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } };
+  try {
+    parsed = JSON.parse(stripJsonComments(fs.readFileSync(absPath, "utf8")));
+  } catch {
+    return {};
+  }
+
+  let inherited: { baseUrl?: string; paths?: Record<string, string[]> } = {};
+  if (typeof parsed.extends === "string") {
+    const extendsPath = resolveExtendsPath(absPath, parsed.extends);
+    if (extendsPath) inherited = readTsconfig(extendsPath, seen);
+  }
+
+  const co = parsed.compilerOptions ?? {};
+  return {
+    baseUrl: co.baseUrl ?? inherited.baseUrl,
+    paths: co.paths ?? inherited.paths,
+  };
+}
+
+/**
+ * Finds every tsconfig.json in the repo and resolves its `paths` aliases (e.g. "@/*" -> "./*",
+ * the default in every create-next-app project) to a repo-relative base directory. Each kit in
+ * a flat folder of independent apps -- not a workspaces monorepo -- has its own tsconfig
+ * scoped to its own subtree, so this returns one entry per config rather than a single map.
+ */
+function findTsconfigs(repoRoot: string, dir = repoRoot, out = new Map<string, TsconfigInfo>()): Map<string, TsconfigInfo> {
+  for (const entry of readDirSafe(dir)) {
+    if (entry.name.startsWith(".")) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!IGNORE_DIRS.has(entry.name)) findTsconfigs(repoRoot, full, out);
+    } else if (entry.name === "tsconfig.json") {
+      const { baseUrl, paths } = readTsconfig(full);
+      if (paths && Object.keys(paths).length) {
+        const relDir = path.relative(repoRoot, dir).split(path.sep).join("/");
+        const baseDir = baseUrl ? path.posix.normalize(path.posix.join(relDir, baseUrl)) : relDir;
+        out.set(relDir, { baseDir, paths });
+      }
+    }
+  }
+  return out;
+}
+
+/** The tsconfig whose directory most closely encloses `fromFile` -- TypeScript itself resolves paths against the nearest enclosing config, not a repo-wide one. */
+function nearestTsconfig(fromFile: string, tsconfigs: Map<string, TsconfigInfo>): TsconfigInfo | null {
+  let dir = path.posix.dirname(fromFile);
+  while (true) {
+    const hit = tsconfigs.get(dir);
+    if (hit) return hit;
+    if (dir === "." || dir === "") return null;
+    dir = path.posix.dirname(dir);
+  }
+}
+
+/**
+ * Matches a bare specifier against a tsconfig's `paths` patterns, TypeScript's own way: the
+ * longest matching prefix wins among overlapping patterns. Returns an unresolved repo-relative
+ * path (still needs resolveModulePath) or null if nothing matches.
+ */
+function resolveTsconfigAlias(specifier: string, config: TsconfigInfo): string | null {
+  let bestPrefixLen = -1;
+  let bestTarget: string | null = null;
+  for (const [pattern, targets] of Object.entries(config.paths)) {
+    const star = pattern.indexOf("*");
+    const prefix = star === -1 ? pattern : pattern.slice(0, star);
+    const suffix = star === -1 ? "" : pattern.slice(star + 1);
+    if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue;
+    if (star === -1 && specifier !== pattern) continue;
+    if (prefix.length <= bestPrefixLen) continue;
+
+    const wildcard = star === -1 ? "" : specifier.slice(prefix.length, specifier.length - suffix.length);
+    const target = targets[0];
+    if (!target) continue;
+    bestPrefixLen = prefix.length;
+    bestTarget = target.includes("*") ? target.replace("*", wildcard) : target;
+  }
+  return bestTarget ? path.posix.normalize(path.posix.join(config.baseDir, bestTarget)) : null;
+}
+
 /** First existing candidate for a module path: the path itself, then with each extension, then as a directory index. */
 function resolveModulePath(base: string, fileSet: Set<string>): string | null {
   if (fileSet.has(base)) return base;
@@ -108,8 +256,21 @@ function resolveImport(
   specifier: string,
   fileSet: Set<string>,
   packages: Map<string, string>,
+  tsconfigs: Map<string, TsconfigInfo>,
 ): string | null {
   if (!specifier.startsWith(".")) {
+    // Tried first: a tsconfig path alias (e.g. "@/components/x") is an explicit, per-project
+    // convention the author set up on purpose, checked before the workspace-package heuristic
+    // below since the two can otherwise collide (a real npm scope "@org/pkg" also doesn't
+    // start with ".").
+    const nearest = nearestTsconfig(fromFile, tsconfigs);
+    if (nearest) {
+      const aliased = resolveTsconfigAlias(specifier, nearest);
+      if (aliased) {
+        const hit = resolveModulePath(aliased, fileSet);
+        if (hit) return hit;
+      }
+    }
     // Bare specifier: an internal workspace package in a monorepo, or a real node_modules dependency.
     const dir = packages.get(specifier);
     if (dir === undefined) return null;
@@ -178,6 +339,7 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
   const relFiles = absFiles.map((f) => path.relative(repoRoot, f).split(path.sep).join("/"));
   const fileSet = new Set(relFiles);
   const packages = findWorkspacePackages(repoRoot);
+  const tsconfigs = findTsconfigs(repoRoot);
 
   const graph = new Graph({ type: "directed" });
   const loc = new Map<string, number>();
@@ -199,7 +361,8 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
 
     const specifiers = await extractImportSpecifiers(source, lang);
     for (const spec of specifiers) {
-      const target = lang === "python" ? resolvePythonImport(rel, spec, fileSet) : resolveImport(rel, spec, fileSet, packages);
+      const target =
+        lang === "python" ? resolvePythonImport(rel, spec, fileSet) : resolveImport(rel, spec, fileSet, packages, tsconfigs);
       if (target && target !== rel && !graph.hasEdge(rel, target)) {
         graph.addEdge(rel, target, { type: "import" });
       }

@@ -268,7 +268,7 @@
   for (const e of edges) { outAdj.get(e.from).push(e.to); inAdj.get(e.to).push(e.from); }
 
   const clusterName = new Map(
-    (D.clusters || []).map((c) => [c.id, c.label || `Cluster ${c.id}`])
+    (D.clusters || []).map((c) => [c.id, c.label || `Subsystem ${c.id}`])
   );
 
   el("tb-repo").textContent = D.repo || "—";
@@ -487,7 +487,7 @@
       t.setAttribute("x", c.x);
       t.setAttribute("y", c.y);
       t.setAttribute("text-anchor", "middle");
-      t.textContent = clusterName.get(cid) || `Cluster ${cid}`;
+      t.textContent = clusterName.get(cid) || `Subsystem ${cid}`;
       gClusters.appendChild(t);
     }
     if (labelMode === "none") return;
@@ -639,7 +639,7 @@
     const ins = inAdj.get(n.id), outs = outAdj.get(n.id);
     el("i-in").textContent = `${ins.length} file${ins.length === 1 ? "" : "s"}`;
     el("i-out").textContent = `${outs.length} file${outs.length === 1 ? "" : "s"}`;
-    el("i-cluster").textContent = clusterName.get(n.cluster) || `Cluster ${n.cluster}`;
+    el("i-cluster").textContent = clusterName.get(n.cluster) || `Subsystem ${n.cluster}`;
     el("i-rank").textContent = `${rankOf.get(n.id)} of ${nodes.length}`;
     fillList(el("i-inlist"), ins);
     fillList(el("i-outlist"), outs);

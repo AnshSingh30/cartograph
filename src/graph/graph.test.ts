@@ -2,7 +2,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildImportGraph, countLines } from "./build.js";
+import { buildImportGraph, countLines, stripJsonComments } from "./build.js";
 import { buildManifest } from "../output/cartographJson.js";
 
 async function main() {
@@ -42,7 +42,92 @@ async function main() {
   lineCounting();
   await unreadableFilesAreSkipped();
   await pythonImports();
+  jsonCommentStripping();
+  await tsconfigPathAliases();
   console.log("OK: graph.test.ts passed");
+}
+
+/**
+ * tsconfig.json is JSONC: comments and trailing commas are legal and JSON.parse rejects both.
+ * A "//" or "/*" inside a string value (e.g. a URL) must survive untouched.
+ */
+function jsonCommentStripping() {
+  const input = `{
+  // line comment
+  "a": 1, /* block
+  comment */ "b": 2,
+  "url": "http://example.com/*not-a-comment*/",
+  "trailing": [1, 2,],
+}`;
+  const parsed = JSON.parse(stripJsonComments(input));
+  assert.strictEqual(parsed.a, 1);
+  assert.strictEqual(parsed.b, 2);
+  assert.strictEqual(parsed.url, "http://example.com/*not-a-comment*/", "// and /* inside a string must not be stripped");
+  assert.deepStrictEqual(parsed.trailing, [1, 2]);
+}
+
+/**
+ * "@/*" -> "./*" is the tsconfig paths alias every create-next-app project sets up by default.
+ * Found missing entirely by scanning a real repo (85 independent Next.js apps): 1356 of ~1400
+ * internal imports used this alias and were silently dropped as unresolvable externals,
+ * versus 46 edges actually resolved. This fixture reproduces that shape at small scale:
+ * multiple independent apps, each with its own tsconfig scoped to its own subtree (not a
+ * single repo-wide alias map), plus the child-config-wins-outright extends case and
+ * longest-prefix-wins when two patterns could both match.
+ */
+async function tsconfigPathAliases() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cartograph-tsconfig-"));
+  const write = (rel: string, content: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), content);
+  };
+
+  // App A: standalone tsconfig with its own "@/*" alias, JSONC-formatted.
+  write(
+    "appA/tsconfig.json",
+    `{
+  // Next.js default
+  "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["./*"], } },
+}`,
+  );
+  write("appA/components/button.tsx", `export const Button = 1;`);
+  write("appA/app/page.tsx", `import { Button } from "@/components/button";`);
+
+  // App B: a second, unrelated app in the same repo -- its "@/*" must resolve within its OWN
+  // subtree, not accidentally hit App A's files of the same name.
+  write("appB/tsconfig.json", `{ "compilerOptions": { "paths": { "@/*": ["./*"] } } }`);
+  write("appB/components/button.tsx", `export const Button = 2;`);
+  write("appB/app/page.tsx", `import { Button } from "@/components/button";`);
+
+  // App C: extends a base config that declares the alias; the child declares none of its own,
+  // so it must inherit rather than lose path resolution entirely.
+  write("appC/tsconfig.base.json", `{ "compilerOptions": { "paths": { "@/*": ["./*"] } } }`);
+  write("appC/tsconfig.json", `{ "extends": "./tsconfig.base.json" }`);
+  write("appC/lib/util.ts", `export const util = 3;`);
+  write("appC/app/page.tsx", `import { util } from "@/lib/util";`);
+
+  // App D: two overlapping patterns -- the more specific "@/lib/*" must win over the general "@/*".
+  write("appD/tsconfig.json", `{ "compilerOptions": { "paths": { "@/*": ["./*"], "@/lib/*": ["./shared/*"] } } }`);
+  write("appD/shared/special.ts", `export const special = 4;`);
+  write("appD/components/special.ts", `export const wrongOne = "should not be picked";`);
+  write("appD/app/page.tsx", `import { special } from "@/lib/special";`);
+
+  const { graph } = await buildImportGraph(dir);
+
+  assert.ok(graph.hasEdge("appA/app/page.tsx", "appA/components/button.tsx"), 'basic "@/*" alias must resolve');
+  assert.ok(
+    graph.hasEdge("appB/app/page.tsx", "appB/components/button.tsx"),
+    "each app's alias must resolve within its own subtree, not cross into a sibling app",
+  );
+  assert.ok(!graph.hasEdge("appB/app/page.tsx", "appA/components/button.tsx"), "must not cross into the sibling app");
+  assert.ok(graph.hasEdge("appC/app/page.tsx", "appC/lib/util.ts"), "paths inherited via extends must resolve");
+  assert.ok(
+    graph.hasEdge("appD/app/page.tsx", "appD/shared/special.ts"),
+    "the more specific @/lib/* pattern must win over the general @/*",
+  );
+  assert.ok(!graph.hasEdge("appD/app/page.tsx", "appD/components/special.ts"), "the less specific pattern must not also match");
+
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /**
