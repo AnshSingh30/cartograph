@@ -1,91 +1,170 @@
 {
   "repo": "cartograph",
-  "generated_at": "2026-08-04T06:45:29.631Z",
+  "generated_at": "2026-08-04T09:59:01.123Z",
   "language": "javascript/typescript",
   "nodes": [
     {
       "id": "bin/cartograph.js",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 0,
       "loc": 4
     },
     {
       "id": "scripts/build-demo-index.js",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 1,
-      "loc": 121
+      "loc": 122,
+      "symbols": [
+        "n"
+      ]
     },
     {
       "id": "scripts/map-changed.js",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 2,
-      "loc": 49
+      "loc": 49,
+      "symbols": [
+        "withoutTimestamp"
+      ]
     },
     {
       "id": "src/cli.ts",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 3,
       "loc": 99
     },
     {
       "id": "src/graph/build.ts",
-      "centrality": 0.07557079449723102,
+      "centrality": 0.06337588307900749,
       "cluster": 4,
-      "loc": 158
+      "loc": 210,
+      "symbols": [
+        "countLines",
+        "readDirSafe",
+        "walk",
+        "findWorkspacePackages",
+        "resolveModulePath",
+        "resolveImport",
+        "resolvePyModulePath",
+        "resolvePythonImport",
+        "buildImportGraph"
+      ]
     },
     {
       "id": "src/graph/graph.test.ts",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 4,
-      "loc": 139
+      "loc": 178,
+      "symbols": [
+        "main",
+        "pythonImports",
+        "lineCounting",
+        "unreadableFilesAreSkipped",
+        "monorepoWorkspaceImports",
+        "tsEsmExtensionRewrite"
+      ]
     },
     {
       "id": "src/llm/narrative.test.ts",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 5,
-      "loc": 37
+      "loc": 101
     },
     {
       "id": "src/llm/narrative.ts",
-      "centrality": 0.07557079449723102,
+      "centrality": 0.06337588307900749,
       "cluster": 5,
-      "loc": 112
+      "loc": 162,
+      "symbols": [
+        "parseJsonObject",
+        "buildPrompt",
+        "applyNarrative",
+        "selectFilesToDescribe",
+        "describeManifest"
+      ]
     },
     {
       "id": "src/llm/provider.ts",
-      "centrality": 0.07949769537655435,
+      "centrality": 0.06666912841157903,
       "cluster": 5,
-      "loc": 63
+      "loc": 66,
+      "symbols": [
+        "detectProvider",
+        "generateText"
+      ]
+    },
+    {
+      "id": "src/output/agentsMd.test.ts",
+      "centrality": 0.03973436219732332,
+      "cluster": 6,
+      "loc": 57,
+      "symbols": [
+        "manifest"
+      ]
     },
     {
       "id": "src/output/agentsMd.ts",
-      "centrality": 0.05543448052499667,
-      "cluster": 3,
-      "loc": 30
+      "centrality": 0.06337588307900749,
+      "cluster": 6,
+      "loc": 102,
+      "symbols": [
+        "detectLayering",
+        "buildAgentsMd"
+      ]
     },
     {
       "id": "src/output/cartographJson.ts",
-      "centrality": 0.17494400626479523,
-      "cluster": 5,
-      "loc": 73
+      "centrality": 0.17795378298132342,
+      "cluster": 6,
+      "loc": 90,
+      "symbols": [
+        "detectLanguages",
+        "buildManifest"
+      ]
+    },
+    {
+      "id": "src/parser/imports.test.ts",
+      "centrality": 0.03973436219732332,
+      "cluster": 4,
+      "loc": 53,
+      "symbols": [
+        "main"
+      ]
     },
     {
       "id": "src/parser/imports.ts",
-      "centrality": 0.11161543581700575,
+      "centrality": 0.12737749588538355,
       "cluster": 4,
-      "loc": 82
+      "loc": 205,
+      "symbols": [
+        "isNestedDefinition",
+        "loadParser",
+        "langForFile",
+        "pythonFromSpecifiers",
+        "extractImportSpecifiers",
+        "extractDefinitions"
+      ]
     },
     {
       "id": "src/serve.test.ts",
-      "centrality": 0.04737995493610293,
+      "centrality": 0.03973436219732332,
       "cluster": 3,
       "loc": 37
     },
     {
       "id": "src/serve.ts",
-      "centrality": 0.09570710846946537,
+      "centrality": 0.0802626837087819,
       "cluster": 3,
-      "loc": 109
+      "loc": 109,
+      "symbols": [
+        "render",
+        "assertManifest",
+        "openBrowser",
+        "shellPathFor",
+        "readManifest",
+        "exportHtml",
+        "serve"
+      ]
     }
   ],
   "edges": [
@@ -150,8 +229,23 @@
       "type": "import"
     },
     {
+      "from": "src/output/agentsMd.test.ts",
+      "to": "src/output/agentsMd.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/output/agentsMd.test.ts",
+      "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
       "from": "src/output/agentsMd.ts",
       "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/parser/imports.test.ts",
+      "to": "src/parser/imports.ts",
       "type": "import"
     },
     {
@@ -183,7 +277,6 @@
       "id": 3,
       "files": [
         "src/cli.ts",
-        "src/output/agentsMd.ts",
         "src/serve.test.ts",
         "src/serve.ts"
       ]
@@ -193,6 +286,7 @@
       "files": [
         "src/graph/build.ts",
         "src/graph/graph.test.ts",
+        "src/parser/imports.test.ts",
         "src/parser/imports.ts"
       ]
     },
@@ -201,7 +295,14 @@
       "files": [
         "src/llm/narrative.test.ts",
         "src/llm/narrative.ts",
-        "src/llm/provider.ts",
+        "src/llm/provider.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "files": [
+        "src/output/agentsMd.test.ts",
+        "src/output/agentsMd.ts",
         "src/output/cartographJson.ts"
       ]
     }
