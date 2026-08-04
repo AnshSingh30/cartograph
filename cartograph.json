@@ -1,0 +1,209 @@
+{
+  "repo": "cartograph",
+  "generated_at": "2026-08-04T06:45:29.631Z",
+  "language": "javascript/typescript",
+  "nodes": [
+    {
+      "id": "bin/cartograph.js",
+      "centrality": 0.04737995493610293,
+      "cluster": 0,
+      "loc": 4
+    },
+    {
+      "id": "scripts/build-demo-index.js",
+      "centrality": 0.04737995493610293,
+      "cluster": 1,
+      "loc": 121
+    },
+    {
+      "id": "scripts/map-changed.js",
+      "centrality": 0.04737995493610293,
+      "cluster": 2,
+      "loc": 49
+    },
+    {
+      "id": "src/cli.ts",
+      "centrality": 0.04737995493610293,
+      "cluster": 3,
+      "loc": 99
+    },
+    {
+      "id": "src/graph/build.ts",
+      "centrality": 0.07557079449723102,
+      "cluster": 4,
+      "loc": 158
+    },
+    {
+      "id": "src/graph/graph.test.ts",
+      "centrality": 0.04737995493610293,
+      "cluster": 4,
+      "loc": 139
+    },
+    {
+      "id": "src/llm/narrative.test.ts",
+      "centrality": 0.04737995493610293,
+      "cluster": 5,
+      "loc": 37
+    },
+    {
+      "id": "src/llm/narrative.ts",
+      "centrality": 0.07557079449723102,
+      "cluster": 5,
+      "loc": 112
+    },
+    {
+      "id": "src/llm/provider.ts",
+      "centrality": 0.07949769537655435,
+      "cluster": 5,
+      "loc": 63
+    },
+    {
+      "id": "src/output/agentsMd.ts",
+      "centrality": 0.05543448052499667,
+      "cluster": 3,
+      "loc": 30
+    },
+    {
+      "id": "src/output/cartographJson.ts",
+      "centrality": 0.17494400626479523,
+      "cluster": 5,
+      "loc": 73
+    },
+    {
+      "id": "src/parser/imports.ts",
+      "centrality": 0.11161543581700575,
+      "cluster": 4,
+      "loc": 82
+    },
+    {
+      "id": "src/serve.test.ts",
+      "centrality": 0.04737995493610293,
+      "cluster": 3,
+      "loc": 37
+    },
+    {
+      "id": "src/serve.ts",
+      "centrality": 0.09570710846946537,
+      "cluster": 3,
+      "loc": 109
+    }
+  ],
+  "edges": [
+    {
+      "from": "src/cli.ts",
+      "to": "src/graph/build.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/cli.ts",
+      "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/cli.ts",
+      "to": "src/output/agentsMd.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/cli.ts",
+      "to": "src/llm/narrative.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/cli.ts",
+      "to": "src/serve.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/graph/build.ts",
+      "to": "src/parser/imports.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/graph/graph.test.ts",
+      "to": "src/graph/build.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/graph/graph.test.ts",
+      "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/llm/narrative.test.ts",
+      "to": "src/llm/narrative.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/llm/narrative.test.ts",
+      "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/llm/narrative.ts",
+      "to": "src/llm/provider.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/llm/narrative.ts",
+      "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/output/agentsMd.ts",
+      "to": "src/output/cartographJson.ts",
+      "type": "import"
+    },
+    {
+      "from": "src/serve.test.ts",
+      "to": "src/serve.ts",
+      "type": "import"
+    }
+  ],
+  "clusters": [
+    {
+      "id": 0,
+      "files": [
+        "bin/cartograph.js"
+      ]
+    },
+    {
+      "id": 1,
+      "files": [
+        "scripts/build-demo-index.js"
+      ]
+    },
+    {
+      "id": 2,
+      "files": [
+        "scripts/map-changed.js"
+      ]
+    },
+    {
+      "id": 3,
+      "files": [
+        "src/cli.ts",
+        "src/output/agentsMd.ts",
+        "src/serve.test.ts",
+        "src/serve.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "files": [
+        "src/graph/build.ts",
+        "src/graph/graph.test.ts",
+        "src/parser/imports.ts"
+      ]
+    },
+    {
+      "id": 5,
+      "files": [
+        "src/llm/narrative.test.ts",
+        "src/llm/narrative.ts",
+        "src/llm/provider.ts",
+        "src/output/cartographJson.ts"
+      ]
+    }
+  ]
+}
