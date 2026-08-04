@@ -67,13 +67,30 @@ Return ONLY a JSON object, no prose and no markdown fences:
   "clusters": { "<cluster id>": "<2-4 word plain-English subsystem name>" },
   "files": { "<file path>": "<1-2 sentences: what it does and why it is structurally important>" }
 }
-Name every cluster listed above. Describe every file listed above. Base descriptions on the code shown, not on guesses from the filename.`;
+Name every cluster listed above. The cluster block above lists every file in the repo so you
+have full context, but you have only actually SEEN THE CONTENTS of the files in the section
+below headed "The highest-centrality files". Describe ONLY those files — do not describe or
+guess at any file whose source was not shown to you above, even if you recognize its name or
+its purpose seems obvious from the filename.`;
 }
 
-/** Merges a model response into the manifest in place. Cluster ids are numbers; JSON keys are strings. */
+/**
+ * Merges a model response into the manifest in place. Cluster ids are numbers; JSON keys
+ * are strings.
+ *
+ * `describedFiles` is the authoritative allowlist: only files whose source was actually
+ * shown to the model may receive a description. Models will confidently guess at a
+ * description for any file path they see (e.g. from the cluster listing, which names every
+ * file in the repo for context) even when told not to — verified against real output on
+ * axios, where a 13-line file was described as doing "file I/O, formatting, or API
+ * interactions" despite never being shown to the model. A hallucinated description is worse
+ * than no description for a tool whose value is being a trustworthy, checkable artifact, so
+ * this is enforced in code rather than relying on prompt wording alone.
+ */
 export function applyNarrative(
   manifest: CartographManifest,
   result: NarrativeResponse,
+  describedFiles: ReadonlySet<string>,
 ): { clusters: number; files: number } {
   let clusters = 0;
   for (const cluster of manifest.clusters) {
@@ -86,6 +103,7 @@ export function applyNarrative(
 
   let files = 0;
   for (const node of manifest.nodes) {
+    if (!describedFiles.has(node.id)) continue;
     const description = result.files?.[node.id];
     if (description) {
       node.description = description;
@@ -108,5 +126,5 @@ export async function describeManifest(
     .map((n) => n.id);
 
   const raw = await generateText(buildPrompt(manifest, repoRoot, topFiles));
-  return applyNarrative(manifest, parseJsonObject(raw));
+  return applyNarrative(manifest, parseJsonObject(raw), new Set(topFiles));
 }

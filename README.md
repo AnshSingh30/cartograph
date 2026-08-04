@@ -44,9 +44,17 @@ One HTML file, opens straight from `file://` with no server.
 
 ### Installing it properly
 
+Published as `@anshsingh30/cartograph` (the plain `cartograph` name on npm belongs to an unrelated router package):
+
+```bash
+npx @anshsingh30/cartograph scan /path/to/repo
+```
+
+Or build from a clone:
+
 ```bash
 npm install && npm run build
-node dist/cli.js scan /path/to/repo      # or `npm link` for a global `cartograph`
+node dist/cli.js scan /path/to/repo      # or `npm link` for a global `cartograph` command
 ```
 
 ### Optional: plain-English descriptions

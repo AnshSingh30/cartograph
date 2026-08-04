@@ -35,6 +35,7 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/expressjs/express.git /tmp/express
           git clone --depth 1 https://github.com/vuejs/core.git /tmp/vue
+          git clone --depth 1 https://github.com/axios/axios.git /tmp/axios
 
       # No API key, so this is the fully offline path -- clusters stay numbered
       # rather than named. The demo must never depend on a secret to build.
@@ -42,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p site
-          for demo in "express:/tmp/express" "vue:/tmp/vue"; do
+          for demo in "express:/tmp/express" "vue:/tmp/vue" "axios:/tmp/axios"; do
             name="${demo%%:*}"
             path="${demo#*:}"
             node dist/cli.js scan "$path" --out "/tmp/out-$name"

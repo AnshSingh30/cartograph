@@ -1,10 +1,13 @@
 {
-  "name": "cartograph",
+  "name": "@anshsingh30/cartograph",
   "version": "0.1.0",
   "description": "Persisted, cross-tool, human-readable map of what actually matters in your repo.",
   "type": "module",
   "bin": {
     "cartograph": "./bin/cartograph.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",

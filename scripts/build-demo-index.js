@@ -9,6 +9,7 @@ const siteDir = process.argv[2] || "site";
 const DEMOS = [
   { slug: "express", name: "expressjs/express", url: "https://github.com/expressjs/express" },
   { slug: "vue", name: "vuejs/core", url: "https://github.com/vuejs/core" },
+  { slug: "axios", name: "axios/axios", url: "https://github.com/axios/axios" },
 ];
 
 const cards = DEMOS.flatMap((demo) => {
