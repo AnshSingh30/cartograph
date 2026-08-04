@@ -1,6 +1,6 @@
 {
   "repo": "cartograph",
-  "generated_at": "2026-08-04T09:59:01.123Z",
+  "generated_at": "2026-08-04T18:30:28.932Z",
   "language": "javascript/typescript",
   "nodes": [
     {
@@ -37,12 +37,18 @@
       "id": "src/graph/build.ts",
       "centrality": 0.06337588307900749,
       "cluster": 4,
-      "loc": 210,
+      "loc": 373,
       "symbols": [
         "countLines",
         "readDirSafe",
         "walk",
         "findWorkspacePackages",
+        "stripJsonComments",
+        "resolveExtendsPath",
+        "readTsconfig",
+        "findTsconfigs",
+        "nearestTsconfig",
+        "resolveTsconfigAlias",
         "resolveModulePath",
         "resolveImport",
         "resolvePyModulePath",
@@ -54,9 +60,11 @@
       "id": "src/graph/graph.test.ts",
       "centrality": 0.03973436219732332,
       "cluster": 4,
-      "loc": 178,
+      "loc": 263,
       "symbols": [
         "main",
+        "jsonCommentStripping",
+        "tsconfigPathAliases",
         "pythonImports",
         "lineCounting",
         "unreadableFilesAreSkipped",
