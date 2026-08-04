@@ -8,6 +8,8 @@ export interface CartographNode {
   cluster: number;
   loc: number;
   description?: string;
+  /** Top-level function/class names this file defines. Not a call graph -- see build.ts. */
+  symbols?: string[];
 }
 
 export interface CartographEdge {
@@ -45,6 +47,7 @@ export function buildManifest(
   repoName: string,
   graph: Graph,
   loc: Map<string, number>,
+  symbols: Map<string, string[]> = new Map(),
 ): CartographManifest {
   const centrality: Record<string, number> = graph.order > 0 ? pagerank(graph) : {};
   const communities: Record<string, number> = graph.order > 0 ? louvain(graph) : {};
@@ -56,12 +59,16 @@ export function buildManifest(
     clusterFiles.get(cluster)!.push(id);
   }
 
-  const nodes: CartographNode[] = graph.nodes().map((id) => ({
-    id,
-    centrality: centrality[id] ?? 0,
-    cluster: communities[id] ?? 0,
-    loc: loc.get(id) ?? 0,
-  }));
+  const nodes: CartographNode[] = graph.nodes().map((id) => {
+    const fileSymbols = symbols.get(id);
+    return {
+      id,
+      centrality: centrality[id] ?? 0,
+      cluster: communities[id] ?? 0,
+      loc: loc.get(id) ?? 0,
+      ...(fileSymbols && fileSymbols.length ? { symbols: fileSymbols } : {}),
+    };
+  });
 
   const edges: CartographEdge[] = [];
   graph.forEachEdge((_edge, _attrs, source, target) => {

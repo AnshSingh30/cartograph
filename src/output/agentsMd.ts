@@ -71,6 +71,11 @@ export function buildAgentsMd(manifest: CartographManifest, topN = 15): string {
   for (const f of topFiles) {
     lines.push(`- \`${f.id}\` — cluster ${f.cluster}, ${f.loc} LOC, centrality ${f.centrality.toFixed(4)}`);
     if (f.description) lines.push(`  - ${f.description}`);
+    if (f.symbols?.length) {
+      const shown = f.symbols.slice(0, 8).join(", ");
+      const more = f.symbols.length > 8 ? `, +${f.symbols.length - 8} more` : "";
+      lines.push(`  - Defines: ${shown}${more}`);
+    }
   }
   lines.push("");
   lines.push("## Subsystem map");

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Graph from "graphology";
-import { extractImportSpecifiers, langForFile, type Lang } from "../parser/imports.js";
+import { extractImportSpecifiers, extractDefinitions, langForFile, type Lang } from "../parser/imports.js";
 
 const IGNORE_DIRS = new Set([
   "node_modules",
@@ -170,6 +170,7 @@ function resolvePythonImport(fromFile: string, specifier: string, fileSet: Set<s
 export interface BuiltGraph {
   graph: Graph;
   loc: Map<string, number>;
+  symbols: Map<string, string[]>;
 }
 
 export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
@@ -180,6 +181,7 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
 
   const graph = new Graph({ type: "directed" });
   const loc = new Map<string, number>();
+  const symbols = new Map<string, string[]>();
   for (const rel of relFiles) graph.addNode(rel);
 
   for (let i = 0; i < absFiles.length; i++) {
@@ -193,6 +195,7 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
       continue;
     }
     loc.set(rel, countLines(source));
+    symbols.set(rel, await extractDefinitions(source, lang));
 
     const specifiers = await extractImportSpecifiers(source, lang);
     for (const spec of specifiers) {
@@ -203,5 +206,5 @@ export async function buildImportGraph(repoRoot: string): Promise<BuiltGraph> {
     }
   }
 
-  return { graph, loc };
+  return { graph, loc, symbols };
 }

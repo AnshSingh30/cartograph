@@ -46,15 +46,55 @@ const PYTHON_QUERY = `
   name: (_) @py_from_name)
 `;
 
+// Named function/class definitions -- deliberately NOT resolved into cross-file call edges
+// (dynamic dispatch, method calls, and higher-order functions make that resolution genuinely
+// risky to get right; the PRD itself marks symbol-level graph nodes as optional). This is
+// just "what does this file define", a lightweight, low-risk hint that can't produce a wrong
+// edge because it doesn't produce edges at all.
+const JS_DEFINITION_QUERY = `
+(function_declaration name: (_) @def)
+(class_declaration name: (_) @def)
+(variable_declarator name: (_) @def value: (arrow_function))
+(variable_declarator name: (_) @def value: (function_expression))
+`;
+const PYTHON_DEFINITION_QUERY = `
+(function_definition name: (_) @def)
+(class_definition name: (_) @def)
+`;
+
+// Ancestor types that mean a captured definition is nested inside another function/class,
+// e.g. a helper defined inside another function -- excluded so the result reads as a file's
+// public surface rather than every closure in it. Verified by hand-tracing both the
+// top-level and nested case for each of the four capture shapes above; see build.ts's
+// module-doc equivalent for the same discipline applied to import resolution.
+const NESTED_CONTAINERS: Record<Lang, ReadonlySet<string>> = {
+  javascript: new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "class_declaration"]),
+  typescript: new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "class_declaration"]),
+  tsx: new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "class_declaration"]),
+  python: new Set(["function_definition", "class_definition"]),
+};
+
+function isNestedDefinition(node: Parser.SyntaxNode, lang: Lang): boolean {
+  const containers = NESTED_CONTAINERS[lang];
+  let current = node.parent?.parent ?? null; // skip the definition's own node (name's immediate parent)
+  while (current) {
+    if (containers.has(current.type)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
 let initialized = false;
 // One parser per language, reused for every file. A parser holds WASM memory that JS
 // garbage collection does not reclaim, so allocating one per file leaks for the whole scan.
 const parsers = new Map<Lang, Parser>();
 const queries = new Map<Lang, Parser.Query[]>();
+const definitionQueries = new Map<Lang, Parser.Query>();
 
 async function loadParser(lang: Lang): Promise<{
   parser: Parser;
   queries: Parser.Query[];
+  defQuery: Parser.Query;
 }> {
   if (!initialized) {
     await Parser.init();
@@ -73,8 +113,9 @@ async function loadParser(lang: Lang): Promise<{
         : [language.query(BASE_QUERY)];
     if (lang !== "javascript" && lang !== "python") langQueries.push(language.query(TS_REQUIRE_QUERY));
     queries.set(lang, langQueries);
+    definitionQueries.set(lang, language.query(lang === "python" ? PYTHON_DEFINITION_QUERY : JS_DEFINITION_QUERY));
   }
-  return { parser, queries: queries.get(lang)! };
+  return { parser, queries: queries.get(lang)!, defQuery: definitionQueries.get(lang)! };
 }
 
 export function langForFile(filePath: string): Lang | null {
@@ -138,6 +179,26 @@ export async function extractImportSpecifiers(source: string, lang: Lang): Promi
       }
     }
     return specifiers;
+  } finally {
+    tree.delete();
+  }
+}
+
+/**
+ * Top-level function and class names a file defines (order of appearance, deduplicated).
+ * Not a call graph -- see the module doc above the query constants for why that's a
+ * deliberate scope cut rather than an oversight.
+ */
+export async function extractDefinitions(source: string, lang: Lang): Promise<string[]> {
+  const { parser, defQuery } = await loadParser(lang);
+  const tree = parser.parse(source);
+  try {
+    const seen = new Set<string>();
+    for (const capture of defQuery.captures(tree.rootNode)) {
+      if (isNestedDefinition(capture.node, lang)) continue;
+      seen.add(capture.node.text);
+    }
+    return [...seen];
   } finally {
     tree.delete();
   }

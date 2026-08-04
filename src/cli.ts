@@ -48,10 +48,10 @@ program
 
     console.log(`Scanning ${repoRoot} ...`);
     const start = Date.now();
-    const { graph, loc } = await buildImportGraph(repoRoot);
+    const { graph, loc, symbols } = await buildImportGraph(repoRoot);
     console.log(`Parsed ${graph.order} files, ${graph.size} import edges in ${Date.now() - start}ms.`);
 
-    const manifest = buildManifest(repoName, graph, loc);
+    const manifest = buildManifest(repoName, graph, loc, symbols);
 
     if (opts.describe) {
       console.log("Generating descriptions ...");
