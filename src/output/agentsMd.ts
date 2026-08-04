@@ -1,5 +1,61 @@
 import type { CartographManifest } from "./cartographJson.js";
 
+const MAX_RELATIONSHIPS = 20;
+
+/**
+ * Layering rules, inferred straight from the directed import graph -- no LLM involved, so
+ * this is a structural fact rather than narration, the same way centrality and clustering are.
+ *
+ * For every pair of clusters with at least one edge between them, checks whether the edges
+ * only ever run one way. A clean layering (e.g. "handlers depend on db, never the reverse")
+ * is exactly the kind of convention worth surfacing; a pair with edges running both ways is a
+ * cycle between subsystems, which is worth flagging for the opposite reason.
+ */
+function detectLayering(manifest: CartographManifest): string[] {
+  const label = (id: number) => {
+    const cluster = manifest.clusters.find((c) => c.id === id);
+    return cluster?.label ? `${cluster.label} (cluster ${id})` : `Cluster ${id}`;
+  };
+  const clusterOf = new Map(manifest.nodes.map((n) => [n.id, n.cluster]));
+
+  const counts = new Map<string, number>(); // "fromCluster|toCluster" -> edge count
+  for (const edge of manifest.edges) {
+    const from = clusterOf.get(edge.from);
+    const to = clusterOf.get(edge.to);
+    if (from === undefined || to === undefined || from === to) continue;
+    const key = `${from}|${to}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  const pairs: { a: number; b: number; ab: number; ba: number }[] = [];
+  const seen = new Set<string>();
+  for (const key of counts.keys()) {
+    const [a, b] = key.split("|").map(Number);
+    const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`;
+    if (seen.has(pairKey)) continue;
+    seen.add(pairKey);
+    pairs.push({ a, b, ab: counts.get(`${a}|${b}`) ?? 0, ba: counts.get(`${b}|${a}`) ?? 0 });
+  }
+
+  // Strongest relationships (most edges between the pair) are the most load-bearing rules.
+  pairs.sort((x, y) => y.ab + y.ba - (x.ab + x.ba));
+
+  const lines: string[] = [];
+  for (const { a, b, ab, ba } of pairs.slice(0, MAX_RELATIONSHIPS)) {
+    if (ab > 0 && ba > 0) {
+      lines.push(`- ⚠ ${label(a)} and ${label(b)} import each other (${ab} and ${ba} edges) — no clear layering between them.`);
+    } else if (ab > 0) {
+      lines.push(`- ${label(a)} depends on ${label(b)} (${ab} import${ab === 1 ? "" : "s"}), never the reverse.`);
+    } else {
+      lines.push(`- ${label(b)} depends on ${label(a)} (${ba} import${ba === 1 ? "" : "s"}), never the reverse.`);
+    }
+  }
+  if (pairs.length > MAX_RELATIONSHIPS) {
+    lines.push(`- ...and ${pairs.length - MAX_RELATIONSHIPS} more subsystem relationships not shown.`);
+  }
+  return lines;
+}
+
 export function buildAgentsMd(manifest: CartographManifest, topN = 15): string {
   const topFiles = [...manifest.nodes].sort((a, b) => b.centrality - a.centrality).slice(0, topN);
 
@@ -26,5 +82,16 @@ export function buildAgentsMd(manifest: CartographManifest, topN = 15): string {
     if (cluster.files.length > 20) lines.push(`- ...and ${cluster.files.length - 20} more`);
     lines.push("");
   }
+
+  const layering = detectLayering(manifest);
+  if (layering.length) {
+    lines.push("## Conventions");
+    lines.push("");
+    lines.push("Layering inferred directly from the import graph — not LLM narration, so it's a structural fact:");
+    lines.push("");
+    lines.push(...layering);
+    lines.push("");
+  }
+
   return lines.join("\n");
 }

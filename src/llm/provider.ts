@@ -18,8 +18,11 @@ export function detectProvider(): Provider | null {
 }
 
 // A description pass that never returns is worse than one that fails: the caller in cli.ts
-// falls back to rule-based output, but only once the request actually gives up.
-const TIMEOUT_MS = 120_000;
+// falls back to rule-based output, but only once the request actually gives up. 120s was
+// too tight in practice -- even a 7-file prompt took 27s under real (if unusually loaded)
+// conditions, and describe is already an explicit opt-in the user knows costs time and
+// credits, so waiting longer before falling back costs nothing but patience.
+const TIMEOUT_MS = 240_000;
 
 export async function generateText(prompt: string): Promise<string> {
   const provider = detectProvider();

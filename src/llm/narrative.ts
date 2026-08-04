@@ -114,17 +114,49 @@ export function applyNarrative(
   return { clusters, files };
 }
 
+// Bounds prompt size and generation latency regardless of how many clusters a repo has.
+// Measured against vuejs/core (42 clusters): an uncapped topPerCluster=3 sends up to 126
+// files and the response alone took long enough to hit the LLM client's 120s timeout,
+// silently falling back to rule-based output on a repo this describe pass should handle.
+const MAX_DESCRIBE_FILES = 60;
+
+/**
+ * Picks which files get a description. Per cluster, not globally: a flat top-N by
+ * centrality mostly describes one or two dominant subsystems on a repo with many clusters
+ * (e.g. on Vue's 42 clusters, a global top 15 leaves most clusters with a name but zero
+ * described files). Selection is round-robin across clusters -- every cluster's best file
+ * first, then every cluster's second-best, and so on -- so the MAX_DESCRIBE_FILES budget
+ * still covers as many clusters as possible rather than truncating by raw centrality and
+ * silently dropping whole clusters from the budget entirely.
+ */
+export function selectFilesToDescribe(manifest: CartographManifest, topPerCluster = 3): string[] {
+  const byCluster = new Map<number, typeof manifest.nodes>();
+  for (const node of manifest.nodes) {
+    if (!byCluster.has(node.cluster)) byCluster.set(node.cluster, []);
+    byCluster.get(node.cluster)!.push(node);
+  }
+  const ranked = [...byCluster.values()].map((nodes) =>
+    [...nodes].sort((a, b) => b.centrality - a.centrality).slice(0, topPerCluster),
+  );
+
+  const topFiles: string[] = [];
+  outer: for (let round = 0; round < topPerCluster; round++) {
+    for (const group of ranked) {
+      if (!group[round]) continue;
+      topFiles.push(group[round].id);
+      if (topFiles.length >= MAX_DESCRIBE_FILES) break outer;
+    }
+  }
+  return topFiles;
+}
+
 /** Adds cluster labels and file descriptions in place. Returns the count of each. */
 export async function describeManifest(
   manifest: CartographManifest,
   repoRoot: string,
-  topN = 15,
+  topPerCluster = 3,
 ): Promise<{ clusters: number; files: number }> {
-  const topFiles = [...manifest.nodes]
-    .sort((a, b) => b.centrality - a.centrality)
-    .slice(0, topN)
-    .map((n) => n.id);
-
+  const topFiles = selectFilesToDescribe(manifest, topPerCluster);
   const raw = await generateText(buildPrompt(manifest, repoRoot, topFiles));
   return applyNarrative(manifest, parseJsonObject(raw), new Set(topFiles));
 }

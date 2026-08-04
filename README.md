@@ -120,9 +120,16 @@ Real output from scanning [expressjs/express](https://github.com/expressjs/expre
 - `index.js`
 - `lib/express.js`
 - `lib/request.js`
+
+## Conventions
+
+Layering inferred directly from the import graph — not LLM narration, so it's a structural fact:
+
+- Application Routing Views (cluster 1) depends on Response Utilities (cluster 2) (1 import), never the reverse.
+- Core Application Entry (cluster 0) depends on Application Routing Views (cluster 1) (1 import), never the reverse.
 ```
 
-Plain markdown with no vendor-specific syntax — paste it into Claude Code, Cursor, Aider, or a PR description.
+Plain markdown with no vendor-specific syntax — paste it into Claude Code, Cursor, Aider, or a PR description. The Conventions section is derived purely from the directed import graph, so it's produced even without `--describe` — the cluster labels just read as "Cluster 0" instead of a name.
 
 ### `cartograph.json`
 
@@ -189,7 +196,7 @@ Stated plainly, because a map you can't trust the boundaries of isn't much of a 
 - **Python absolute imports resolve from the repo root** (with a `src/` layout fallback), the same convention `sys.path` uses in practice. A package installed from somewhere other than the repo root, or added to `sys.path` at runtime, won't resolve.
 - **Import edges only.** Function/class definitions and call references are not yet extracted, so the graph captures module structure rather than call flow.
 - **Monorepo subpath imports are not resolved.** Bare workspace imports (`@scope/pkg`) resolve correctly, but deep ones (`@scope/pkg/submodule`) are still treated as external.
-- **Descriptions cover the top ~15 files repo-wide,** not the top files *per cluster*. On a large repo most clusters get a name but no per-file prose.
+- **Descriptions cover up to 3 files per cluster,** capped at 60 files total regardless of cluster count (bounds `--describe` prompt size and latency — an earlier uncapped version timed out on Vue's 42 clusters). Selection is round-robin across clusters, so every cluster gets at least one description before any cluster gets a third.
 - **The map is a layout, not a floorplan.** Node positions come from a force simulation seeded by cluster, so they are stable in character but not identical between runs. Files with no imports either way are parked in a labelled margin block rather than placed by physics.
 - **Tests and examples are excluded** from the graph by default, since test helpers otherwise crowd out application code in the ranking.
 - **The map uses system fonts,** not the webfonts in the original design, so that `serve` makes no network requests at all.

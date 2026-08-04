@@ -17,7 +17,7 @@
     "cartograph": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/ui','dist/ui',{recursive:true})\"",
     "prepublishOnly": "npm run build",
-    "test": "tsx src/graph/graph.test.ts && tsx src/llm/narrative.test.ts && tsx src/serve.test.ts"
+    "test": "tsx src/graph/graph.test.ts && tsx src/llm/narrative.test.ts && tsx src/serve.test.ts && tsx src/output/agentsMd.test.ts"
   },
   "license": "MIT",
   "dependencies": {
