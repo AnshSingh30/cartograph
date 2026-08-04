@@ -6,7 +6,7 @@ import { buildImportGraph } from "./graph/build.js";
 import { buildManifest } from "./output/cartographJson.js";
 import { buildAgentsMd } from "./output/agentsMd.js";
 import { describeManifest } from "./llm/narrative.js";
-import { serve } from "./serve.js";
+import { serve, exportHtml } from "./serve.js";
 
 // Load .env from the working directory. Shell-exported vars take precedence.
 if (fs.existsSync(".env")) process.loadEnvFile();
@@ -85,6 +85,15 @@ program
       process.exit(1);
     }
     serve(dir, port, opts.open);
+  });
+
+program
+  .command("export")
+  .description("write the map as a single self-contained HTML file")
+  .argument("[dir]", "directory containing cartograph.json", ".")
+  .option("-o, --out <file>", "output HTML file", "cartograph-map.html")
+  .action((dir: string, opts: { out: string }) => {
+    exportHtml(dir, opts.out);
   });
 
 program.parse();

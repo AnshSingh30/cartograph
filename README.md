@@ -34,6 +34,21 @@ npx tsx src/cli.ts serve ./cartograph-output --no-open      # don't launch a bro
 
 The page is a single self-contained file with the manifest inlined — no CDN, no webfonts, no telemetry, no network calls of any kind. It re-reads `cartograph.json` on every refresh, so a re-scan shows up without restarting the server.
 
+To get that same page as a file you can commit, email, or host anywhere:
+
+```bash
+npx tsx src/cli.ts export ./cartograph-output --out map.html
+```
+
+One HTML file, opens straight from `file://` with no server.
+
+### Installing it properly
+
+```bash
+npm install && npm run build
+node dist/cli.js scan /path/to/repo      # or `npm link` for a global `cartograph`
+```
+
 ### Optional: plain-English descriptions
 
 To have an LLM name each subsystem and describe the load-bearing files, copy `.env.example` to `.env` and add a key:

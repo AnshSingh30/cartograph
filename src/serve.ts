@@ -32,25 +32,50 @@ function openBrowser(url: string): void {
   exec(`${cmd} ${url}`, () => {});
 }
 
-export function serve(dir: string, port: number, open: boolean): void {
-  const outDir = path.resolve(dir);
-  const manifestPath = path.join(outDir, "cartograph.json");
+/** Path to the UI shell, alongside this module in both src/ and dist/. */
+function shellPathFor(): string {
+  return path.join(import.meta.dirname, "ui", "app.html");
+}
 
+/** Reads and validates the manifest for `dir`, exiting with a usable message if it can't. */
+function readManifest(dir: string): string {
+  const manifestPath = path.join(path.resolve(dir), "cartograph.json");
   if (!fs.existsSync(manifestPath)) {
-    console.error(`No cartograph.json in ${outDir}.`);
-    console.error(`Run: npx tsx src/cli.ts scan <repo> --out ${dir}`);
+    console.error(`No cartograph.json in ${path.resolve(dir)}.`);
+    console.error(`Run: cartograph scan <repo> --out ${dir}`);
     process.exit(1);
   }
-
-  // Fail at startup rather than on the first request, so the problem is visible immediately.
+  const manifest = fs.readFileSync(manifestPath, "utf8");
   try {
-    assertManifest(fs.readFileSync(manifestPath, "utf8"));
+    assertManifest(manifest);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
+  return manifest;
+}
 
-  const shellPath = path.join(import.meta.dirname, "ui", "app.html");
+/**
+ * Writes the map as one self-contained HTML file — no server, no assets, no network.
+ * This is what the hosted demo publishes, and what you can email or drop in a bucket.
+ */
+export function exportHtml(dir: string, outFile: string): void {
+  const html = render(fs.readFileSync(shellPathFor(), "utf8"), readManifest(dir));
+  const target = path.resolve(outFile);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, html);
+  const kb = Math.round(Buffer.byteLength(html) / 1024);
+  console.log(`Wrote ${target} (${kb} kB, self-contained).`);
+}
+
+export function serve(dir: string, port: number, open: boolean): void {
+  const outDir = path.resolve(dir);
+  const manifestPath = path.join(outDir, "cartograph.json");
+
+  // Fail at startup rather than on the first request, so the problem is visible immediately.
+  readManifest(dir);
+
+  const shellPath = shellPathFor();
   const server = http.createServer((req, res) => {
     if (req.url !== "/" && req.url !== "/index.html") {
       res.writeHead(404).end("Not found");
